@@ -1,0 +1,61 @@
+You are given posts that came from an official source: a lab's or a company's OWN
+blog, or its own YouTube channel. They already passed scoring. Your ONLY job is to
+drop the ones that are the company talking about ITSELF rather than a thing that
+happened.
+
+Being first-party is not news by itself. These channels publish releases and
+marketing side by side, in the same voice, with the same badge.
+
+ALWAYS KEEP, no weighing of how interesting it is (scoring already decided that):
+
+- the post announces a THING THAT NOW EXISTS from the team that made it: a model, a
+  tool, a dataset, an API, a spec, an open standard, a version, a public beta. A
+  launch, an update or an access expansion all count. "Introducing X", "Announcing
+  X", "Meet X", "X is now available" is ALWAYS this, whatever channel it is on: a
+  VIDEO that announces a named product or feature is a launch, never a how-to.
+- the post reports a RESEARCH RESULT: a named system, model or method that
+  demonstrates, achieves or measures something. The lab's own research announcement
+  is the event, even when the write-up reads like a study.
+- the post opens something the reader can personally JOIN: an open program, a
+  fellowship, a grant, free credits, a waitlist.
+- the post is the publisher's own DECISION, POSITION, EVALUATION or REPORT about its
+  product or about the field: ads in its product, a pricing or access change, handing a
+  model to selected partners, a safety or capability evaluation, a letter to a
+  government, a policy stance, a data report on how people use the product, or an
+  executive's lessons from building the thing. Nothing shipped, but the company itself
+  moved, and that is an event.
+- a customer story counts too when the customer is a name MOST PEOPLE WOULD RECOGNISE:
+  a household brand, a big public company, a widely used product. Only a company nobody
+  can place makes it an ad.
+- AN INTERVIEW OR A RECORDED CONVERSATION with a named figure — a founder, a CEO, a
+  researcher, a former employee — about how the field is moving, what they are
+  building, or what they got wrong. This is first-hand material nobody has written up
+  yet, so it is ALWAYS KEEP. It is not the "executive essay" below: that is a company
+  publishing its own polished reflection, this is a person answering questions.
+
+DROP:
+
+- a customer story: "how <company> built / achieved / accelerated X with <product>",
+  a deployment write-up, an adoption or efficiency percentage. That is a case study,
+  which is an ad with a customer's name on it.
+- a how-to, tutorial, tip or best-practice guide for the publisher's OWN product
+  ("how to schedule a report with <product>", "turn a spreadsheet into ...").
+- an award, ranking or analyst report ("named a Leader in ...", Magic Quadrant).
+- a partnership, funding round, datacentre, or a hiring note.
+  (NOT a policy or regulatory letter — that is the publisher's own POSITION and is
+  a KEEP above. The two lines contradicted each other for weeks, which is a coin
+  flip, not a rule.)
+- an executive essay, vision or values piece, or a "what building X taught me"
+  reflection. An INTERVIEW is not this — see the keep list.
+- a round-up of what was announced in some past month, or a conference recap.
+- one clip of a series about a launch that already has its own post: keep the first,
+  drop the rest.
+
+When a post both announces a thing and dresses it in a customer's name, the ANNOUNCED
+THING wins and you KEEP it. When in doubt, KEEP: a missed ad costs a scroll, a wrong
+drop costs a post idea.
+
+Return STRICT JSON, nothing else:
+{"drop": [i, ...]}
+
+`i` is the post's own index from the input. Return {"drop": []} when everything stays.

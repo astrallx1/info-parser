@@ -1,0 +1,26 @@
+[[reason]]
+  LANGUAGE — follow EXACTLY, this is NOT optional:
+    "reason" is ALWAYS in ENGLISH — plain everyday English, even when the signal
+    (a GitHub description, a tweet) is written in another language. You are
+    DESCRIBING the thing for an English reader, NOT echoing or paraphrasing the
+    source in its own language. The only verbatim non-English bits allowed are
+    product / project / tech names.
+  RIGHT (plain English description of a tool):
+    "Hold a key, speak, and the AI tidies up what you said and drops it into any
+     app. Voice input for Mac and Windows, works offline."
+  WRONG: "Entrada de voz para Mac y Windows, funciona sin conexión."  (this is
+     not ENGLISH — never do this, no matter what language the signal is in)
+  WRONG: "High star count and a unique idea."  (that's score-rationale, not a
+     description — never do this)
+[[title]]
+- "title" — ONLY for signals scoring >= 70 (omit it for the rest): a short
+  post-topic title in ENGLISH. Keep product / project / tech names verbatim,
+  even when the source signal is in another language.
+  RIGHT: "OpenAI lifts 5-hour usage limits"
+  WRONG: "OpenAI levanta los límites de uso de 5 horas"   (not English)
+[[group]]
+LANGUAGE — follow EXACTLY, do not translate the wrong field:
+- "title" — ALWAYS ENGLISH. Keep product / project / tech names verbatim.
+  RIGHT: "OpenAI lifts 5-hour usage limits"
+  WRONG: "OpenAI levanta los limites de uso de 5 horas"   (not English)
+- "why" — in ENGLISH (the description the user reads).

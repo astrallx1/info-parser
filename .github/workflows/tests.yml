@@ -1,0 +1,67 @@
+# The suite on Windows, on every push. Development happens on macOS, so this is what
+# catches the class of bug Windows actually produces: path separators, file encodings,
+# the reserved-name check in `config`, and the `platform.system()` branches in `notify`
+# and the close handler. It cannot check the GUI. WebView2 rendering, the WinForms quit
+# dialog and the toast all need a real desktop.
+#
+# `pythonnet` is installed for the same reason the README asks for it on a real Windows
+# box: pywebview's Windows backend is EdgeChromium/WinForms and needs it, and
+# `tests/test_native_dialog_localization.py` imports `main`, which imports webview.
+# Playwright browsers are NOT installed: no test launches one, and the download would
+# cost minutes for nothing.
+#
+# macOS runs the same suite because the owner's normal machine is Windows: the mac
+# branches (`notify._send_mac*`, the NSAlert quit dialog, `paths.app_dir`'s Application
+# Support path) are then covered by nobody at all. No `pythonnet` there — pywebview's
+# cocoa backend needs pyobjc, which comes in with the requirements.
+name: tests
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt pythonnet
+
+      - name: Suite
+        run: python -m pytest
+
+      - name: Every closed finding is still closed
+        run: python tools/audit.py
+
+      # Only present in the development checkout. The step is skipped where it is not.
+      - name: The stub harness still builds
+        if: hashFiles('tools/build_harness.py') != ''
+        run: python tools/build_harness.py
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Suite
+        run: python -m pytest
+
+      - name: Every closed finding is still closed
+        run: python tools/audit.py
