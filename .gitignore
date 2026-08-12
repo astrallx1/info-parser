@@ -1,0 +1,19 @@
+# Your API keys and your X session. Never commit either.
+.env
+cookies.json
+
+__pycache__/
+*.db
+*.db.backup
+*.db.backup-*
+topics.db.*
+*.db-wal
+*.db-shm
+.venv/
+.superpowers/
+debug/
+.DS_Store
+.vscode/
+build/
+dist/
+*.spec

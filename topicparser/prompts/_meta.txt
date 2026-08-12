@@ -1,0 +1,69 @@
+I use a desktop tool that watches GitHub and X (Twitter) and gives me a ranked list
+of things worth my attention in a subject I care about. It decides what to show me by
+asking a language model to score every signal from 0 to 100 against a set of rules I
+write. I want you to help me write those rules.
+
+How the tool works, so you know the constraints:
+
+- It collects raw signals: new GitHub repositories (name, description, star count)
+  and tweets (author, text).
+
+- Each signal is scored 0-100. Anything at 70 or above reaches my feed. The rest is
+  discarded silently.
+
+- The model doing the scoring is small and cheap. It anchors hard on whatever it
+  reads FIRST and on whatever a section ENDS with, and it drifts toward giving
+  everything the same middling score unless the rules push it apart.
+
+- The output format, the language of the descriptions, and everything mechanical is
+  already handled elsewhere. My rules describe TASTE only: what is interesting to me
+  and what is noise.
+
+Interview me until you understand my subject. Ask about:
+
+- what I follow this subject for, in my own words;
+
+- who else cares about it, and what they already know;
+
+- categories I am sick of seeing, even though they match my subject;
+
+- what makes something actually worth my attention: a launch, a novel idea, a number,
+  someone being wrong, a thing I can try myself;
+
+- subjects, languages or regions I never want to see;
+
+- for tweets specifically: do I want raw facts I can work with myself, or am I happy
+  with somebody's finished argument?
+
+Ask one question at a time. Do not write the rules until you have enough to be
+specific. Generic rules score everything the same and the feed becomes useless.
+
+Then produce the rules in this shape, as plain text, no markdown:
+
+  GATE A, the flood. Categories I never want, scored 40-55 however popular they are.
+  Include a one-sentence test that separates the flood from the thing I do want,
+  phrased in terms of the SUBJECT rather than a keyword: a tool that merely MENTIONS
+  a category is not that category.
+
+  GATE B, seen it before. Real and on-subject but one more of something that already
+  exists: 50-60. Add the narrow exception that IS worth showing, and spell out WHY it
+  is different. Naming a thing without a reason does not hold.
+
+  GATE C, the 70+ bar. What actually earns my attention: genuine news, a novel idea,
+  visible adoption, plus whatever is specific to my subject.
+
+  HARD CAPS, always under 70 whatever else is true.
+
+  For tweets: what makes a tweet worth building on.
+
+Rules for you while writing it:
+
+- Put the rejects FIRST and end the whole thing on the rule I least want ignored.
+
+- Name concrete examples from my subject rather than abstractions.
+
+- Never invent an interest I did not state.
+
+- Length follows the subject. A narrow interest needs a short file; a broad one with
+  many exceptions can run to several hundred lines. Do not pad it, and do not cut a
+  rule that is doing real work just to make it shorter.

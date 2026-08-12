@@ -1,0 +1,857 @@
+{
+ "time": "sample",
+ "selected": [
+  "Sample"
+ ],
+ "threshold": 70,
+ "profiles": {
+  "Sample": {
+   "collected": 120,
+   "after_prefilter": 120,
+   "scored": [
+    {
+     "source": "github",
+     "title": "IssacW228/student-llm-wiki",
+     "url": "https://github.com/IssacW228/student-llm-wiki",
+     "text": "📚 Student LLM Wiki — AI-compiled knowledge base for university students. Drop course slides, get a persistent interlinked wiki. Feynman review, exam prep, confidence decay, cross-course connections. Based on Karpathy's LLM Wiki pattern. Works with Claude Cowork / Claude Code / Claudian + Obsidian.学生大语言模型维基百科——专为大学生打造的AI编译知识库。",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "johnbean393/KeyType",
+     "url": "https://github.com/johnbean393/KeyType",
+     "text": "An open-source Cotypist with macOS system wide AI autocomplete",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "benlamiro/ShipGenAI",
+     "url": "https://github.com/benlamiro/ShipGenAI",
+     "text": "🚀 50 production-ready Generative AI SaaS apps — brand them, ship them, keep 100% of the revenue. Stripe billing · Google OAuth · Vercel deploy · MIT licensed",
+     "score": 60
+    },
+    {
+     "source": "github",
+     "title": "AndrewDryga/emisar",
+     "url": "https://github.com/AndrewDryga/emisar",
+     "text": "An MCP that lets AI tools securely connect to your infrastructure, write IaaS code, debug issues, and assist during incidents - without risking production stability. Built for security teams to approve and infrastructure teams to experience like magic.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "scaccogatto/okf-skills",
+     "url": "https://github.com/scaccogatto/okf-skills",
+     "text": "The OKF toolkit for Claude Code — author, maintain, validate & visualize Open Knowledge Format bundles. Plugin, agent skills, and a GitHub Action.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "kawsarlog/automation-apis",
+     "url": "https://github.com/kawsarlog/automation-apis",
+     "text": "16,000+ Automation APIs for workflow orchestration, task automation, RPA, and removing manual busywork.",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "Travisun/Opptrix",
+     "url": "https://github.com/Travisun/Opptrix",
+     "text": "Opptrix — 大模型驱动的投研助手 | Open-source LLM research assistant for China A-shares. 40+ MCP tools, factor screening, backtest, watchlist & Electron desktop. TypeScript · React · Fastify monorepo.",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "jiaxuan-tao/vibe-coding-lab",
+     "url": "https://github.com/jiaxuan-tao/vibe-coding-lab",
+     "text": "Vibe Coding 轻量项目实验室：Web 应用、桌面工具、Prompt 资料库与 Codex Skills",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "jhd3197/Tramo",
+     "url": "https://github.com/jhd3197/Tramo",
+     "text": "Embed a workflow editor in your app. Visual, node-based automation builder that outputs plain JSON and runs in the browser, Node, CLI, or Python.",
+     "score": 20
+    },
+    {
+     "source": "github",
+     "title": "EXXETA/exxperts",
+     "url": "https://github.com/EXXETA/exxperts",
+     "text": "Local-first AI agents with governed, approval-gated memory. Any model provider; MCP tools and web search built in. Nothing remembered without your say-so, nothing leaves your machine.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "emmi-dev12/castor-cms",
+     "url": "https://github.com/emmi-dev12/castor-cms",
+     "text": "Hand clients the keys to their site, not the code. A CMS where you decide exactly what each client can change — free, source-available, self-hosted.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "YizhiSong/FriesTrader",
+     "url": "https://github.com/YizhiSong/FriesTrader",
+     "text": "A fully automated AI trading agent, unattended once set up: trades real Robinhood orders via its Agentic Trading MCP. Two scheduled Claude Code sessions a day screen stocks and place trades under a narrow gate, with mechanical risk rules as the safety layer. Cheap to run -- Claude Pro only, no metered API spend. Not financial advice.",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "nossa-y/activity-frames",
+     "url": "https://github.com/nossa-y/activity-frames",
+     "text": "Turn your workday into structured workflows agents can execute. 100% local, served over MCP.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "livecontext-ai/livecontext-ce",
+     "url": "https://github.com/livecontext-ai/livecontext-ce",
+     "text": "The AI automation platform, self-hosted. Describe the job in chat and LiveContext builds it: readable workflows, scoped AI agents, and small apps your team uses. Chat, Workflow, Agent and App on one canvas.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "pacocartones/free-llm-api-hub",
+     "url": "https://github.com/pacocartones/free-llm-api-hub",
+     "text": "A continuously-verified dataset of free-tier & trial-credit LLM APIs for developers. Every entry dated, sourced to the provider's own docs, and machine-readable. No hype, no dead links.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "sunyifeng11111/sun-felt-wechat-illustrator",
+     "url": "https://github.com/sunyifeng11111/sun-felt-wechat-illustrator",
+     "text": "为中文公众号文章生成真实 3D 毛毡质感的封面、正文配图与精确插入指南的 Codex Skill。",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "liliu-z/stashbase",
+     "url": "https://github.com/liliu-z/stashbase",
+     "text": "Turn local files into searchable context for AI agents.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "SimonFirestone1/empirical_agent",
+     "url": "https://github.com/SimonFirestone1/empirical_agent",
+     "text": "An end-to-end framework for running, sandboxing, and scoring agentic LLMs on complex data-science and econometric replication tasks.",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "PentHertz/grimoire",
+     "url": "https://github.com/PentHertz/grimoire",
+     "text": "Offensive knowledge, offline. One search box for every playbook.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "BESSER-PEARL/uml-drawing-skill",
+     "url": "https://github.com/BESSER-PEARL/uml-drawing-skill",
+     "text": "Agent Skill: draw a correct UML class diagram via BESSER B-UML and generate SVG/PNG outputs in one call — no browser. For READMEs, design docs, wikis, and slides.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "SamurAIGPT/social-post",
+     "url": "https://github.com/SamurAIGPT/social-post",
+     "text": "Open-source AI social media post generator — production-ready Next.js SaaS with live platform mockups for LinkedIn, Twitter/X, Instagram, Facebook & Reddit, multi-tone generation, and publish intents. Free Buffer AI & Jasper Social alternative with Stripe, credits, NextAuth, Prisma.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "badchars/darknet-mcp-server",
+     "url": "https://github.com/badchars/darknet-mcp-server",
+     "text": "66-tool MCP server for dark web intelligence — breach data, ransomware tracking, Tor .onion access, malware analysis, blockchain intel, exploit search, stealer logs",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "golemui/formstudio-community",
+     "url": "https://github.com/golemui/formstudio-community",
+     "text": "Open-source AI form builder for the GolemUI ecosystem. Powered by Cloudflare",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "ShenSeanChen/waku-agent",
+     "url": "https://github.com/ShenSeanChen/waku-agent",
+     "text": "Waku Waku! Waku agent is your personal AI agent, on your own laptop, in code you can read in an afternoon — harness + loop + memory + eval",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "nguyenhx2/agent-harness-bootstrap",
+     "url": "https://github.com/nguyenhx2/agent-harness-bootstrap",
+     "text": "Specs both you and the AI understand. An agent team fitted to your repo. Guardrails that block, not advise. Two Claude Code skills - spec-builder + harness-bootstrap - for greenfield, brownfield, or audit-only.",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "EXG1O/CTB-Platform-Bot",
+     "url": "https://github.com/EXG1O/CTB-Platform-Bot",
+     "text": "Platform bot of the Constructor Telegram Bots project.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "Yuuhann1999/codex-storyboard",
+     "url": "https://github.com/Yuuhann1999/codex-storyboard",
+     "text": "本地多项目 Codex 视频分镜工作台，支持图片/视频生成任务、HyperFrames 与 Remotion 自动回填。Local multi-project storyboard workspace for Codex.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "guildsocialismincompetence200/apex-automated-ea",
+     "url": "https://github.com/guildsocialismincompetence200/apex-automated-ea",
+     "text": "Automate forex trading on MetaTrader 4 and 5 with fixed 0.5% risk management and hard stop loss orders.",
+     "score": 10
+    },
+    {
+     "source": "github",
+     "title": "LichAmnesia/awesome-ad-video-prompts",
+     "url": "https://github.com/LichAmnesia/awesome-ad-video-prompts",
+     "text": "Curated, original high-craft prompts for AI video ads (Seedance 2.0 / Veo 3 / Kling / Runway). Companion to HeyDreaming.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "icebird1998/scientific-illustrator",
+     "url": "https://github.com/icebird1998/scientific-illustrator",
+     "text": "Editable scientific figures in PowerPoint and draw.io via Codex/MCP with Designer-Drawer-Reviewer-Corrector quality gates.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "mirror29/inalpha",
+     "url": "https://github.com/mirror29/inalpha",
+     "text": "🦊 Open-source professional quant agent framework. Agents pick the factors working now to time entries, write full strategies, and evolve them in   a sandbox — every order through machine approval, the LLM never on the order path. Multi-market, audit-grade.",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "Sentient-OS-Labs/sentient-os",
+     "url": "https://github.com/Sentient-OS-Labs/sentient-os",
+     "text": "An on-device LLM understands your entire life, then proactively offers to get your work done through computer use.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "VincDD96/Salesforce-Survey-Console",
+     "url": "https://github.com/VincDD96/Salesforce-Survey-Console",
+     "text": "Point-and-click, branching survey engine built natively on Salesforce — visual graph editor, live theme editor, CSV export, embeddable in Lightning pages, Flow, or LWC. No code required to build a new survey.",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "raiyanyahya/recall",
+     "url": "https://github.com/raiyanyahya/recall",
+     "text": "Stop wasting tokens and re-explaining your project every session. Recall gives Claude Code durable memory — entirely offline.",
+     "score": 70
+    },
+    {
+     "source": "github",
+     "title": "Nanako0129/pilotfish",
+     "url": "https://github.com/Nanako0129/pilotfish",
+     "text": "Multi-model orchestration layer for Claude Code — the frontier model plans, cheaper models execute, verification guards quality. One-prompt install.",
+     "score": 70
+    },
+    {
+     "source": "github",
+     "title": "bestdeejay-design/awesome-ai-handbook",
+     "url": "https://github.com/bestdeejay-design/awesome-ai-handbook",
+     "text": "A practical guide to AI: from running your first local model to building your own agents. 52 files covering LLMs, Ollama, RAG, prompt engineering, machine learning, AI agents, and local AI tools.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "Tura-AI/tura",
+     "url": "https://github.com/Tura-AI/tura",
+     "text": "Across 348 long-horizon benchmark sessions, Tura used up to 83.1% fewer turns on the rewrite benchmark and improved the DeepSWE pass rate by up to 16.7 percentage points compared with Codex CLI.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "Sugers955/agent-mill",
+     "url": "https://github.com/Sugers955/agent-mill",
+     "text": "AgentMill - Enterprise-Grade AI Agent Platform & Agent Factory for Building Custom Digital Employees",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "withkynam/vibecode-pro-max-kit",
+     "url": "https://github.com/withkynam/vibecode-pro-max-kit",
+     "text": "Your AI forgets. This remembers. Spec-driven coding harness for vibecoders, product owners, CEOs and real builders — self-improving context memory, 15 agents, 33 skills working with /goal, agent-team, & workflow on autopilot loops with 0 need for human gate. Kills context rot, ships features, not spaghetti. Claude Code & Codex. Any stack",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "jx2ior/fem-browser-extension-manager-ui",
+     "url": "https://github.com/jx2ior/fem-browser-extension-manager-ui",
+     "text": "Power Apps Canvas application implementing a browser extension manager that allows users to toggle extension states, filter active and inactive items, remove extensions, switch color themes, and interact with a responsive interface featuring hover and focus states.",
+     "score": 20
+    },
+    {
+     "source": "github",
+     "title": "syrizelink/OpenFic",
+     "url": "https://github.com/syrizelink/OpenFic",
+     "text": "专为小说创作打造的跨平台、用户友好、AI Native 的一站式 Vibe Wrting 工具。A cross-platform, user-friendly, AI-native, all-in-one Vibe Writing tool designed specifically for novel wrting.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "longyi-xw/lowcode-3d",
+     "url": "https://github.com/longyi-xw/lowcode-3d",
+     "text": "AI-assisted low-code platform for the Web 3D stack — visually arrange a scene, export production-ready Three.js code.",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "wanshuiyin/Anti-Autoresearch",
+     "url": "https://github.com/wanshuiyin/Anti-Autoresearch",
+     "text": "Don't trust an autoresearch paper at face value. Reviewer-side integrity forensics (self-consistency + fabrication), deterministic verdict. 61 signals: 46 integrity hack-patterns (families A–H, verdict-bearing) + 13 zero-weight AI writing-style impressions (AIS) + 2 advisory. Not an opaque AI-text classifier. The dual of ARIS.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "synthetic-sciences/openscience",
+     "url": "https://github.com/synthetic-sciences/openscience",
+     "text": "The open-source AI workbench for scientific research",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "TOPDEV99999/AI-Knowledge-Management-Platform",
+     "url": "https://github.com/TOPDEV99999/AI-Knowledge-Management-Platform",
+     "text": "An agentic LLM-powered knowledge assistant that enhances RAG capabilities through automated entity extraction, structured data analysis, and SQL-based reasoning to deliver accurate answers for complex, multi-step, and analytical queries.",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "DizzyMii/fable-skills",
+     "url": "https://github.com/DizzyMii/fable-skills",
+     "text": "Six Claude Code skills that harden Opus 4.8 toward frontier behavior — written by Fable 5, pressure-tested on the target model with transcripts included.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "omnigent-ai/omnigent",
+     "url": "https://github.com/omnigent-ai/omnigent",
+     "text": "Omnigent is an open-source AI agent framework and meta-harness: orchestrate Claude Code, Codex, Cursor, Pi, and custom agents — swap harnesses without rewriting, enforce policies and sandboxing, and collaborate in real time from any device.",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "markpasternak/canvas-drop",
+     "url": "https://github.com/markpasternak/canvas-drop",
+     "text": "Self-hostable, open-source platform to deploy & share small static web apps (\"canvases\") inside your org — paste/drag/PUT a folder, get an instant secure URL. Five zero-config backend primitives (KV, files, AI, identity, realtime), an MCP server for AI agents, no telemetry.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "Laurent00TT/PharosRAG",
+     "url": "https://github.com/Laurent00TT/PharosRAG",
+     "text": "Pharos — local-first agentic RAG for your team's document library: multi-format ingest, hybrid retrieval, enterprise ACL, dual HTTP + MCP exits.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "modelstudioai/cli",
+     "url": "https://github.com/modelstudioai/cli",
+     "text": "Official Model Studio CLI（阿里云百炼 CLI）built for AI Agent frameworks, exposing models, search, multimodal, and workflow capabilities as structured tool calls.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "alem-world/alem-env",
+     "url": "https://github.com/alem-world/alem-env",
+     "text": "Can LLM/MARL agents coordinate in long-horizon, open-ended tasks?",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "sakurablush/zeroagent-studio",
+     "url": "https://github.com/sakurablush/zeroagent-studio",
+     "text": "Free visual AI agent builder in the browser. Draw workflows like a flowchart with 203 chainable tools and eight guided quests. Local models (Transformers.js, WebLLM) need no API key; OpenRouter, Groq, and Gemini are optional. No account, no analytics. MIT.",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "objectstack-ai/objectos",
+     "url": "https://github.com/objectstack-ai/objectos",
+     "text": "Build & ask online: describe the app; ObjectOS builds and runs it in the browser — in our cloud or yours. Built on the open ObjectStack format.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "GregorBiswanger/featherspec",
+     "url": "https://github.com/GregorBiswanger/featherspec",
+     "text": "A featherweight spec-driven development template with a Memory Bank, for Claude Code and GitHub Copilot.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "aqua5230/usage",
+     "url": "https://github.com/aqua5230/usage",
+     "text": "macOS menu bar & Windows tray app pinning Claude Code, Codex & Antigravity quota, burn rate, and cost to your screen. Local-first, no LLM API calls. HTML reports, 10 themes.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "Junliu1066/vibe-coding-kit",
+     "url": "https://github.com/Junliu1066/vibe-coding-kit",
+     "text": "不教你写代码,教你把\"用 AI 写代码\"彻底想明白 — 给非技术产品人的 vibe coding 规划工具包",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "SlideSpeak/slide-design-skill",
+     "url": "https://github.com/SlideSpeak/slide-design-skill",
+     "text": "AI presentation engine. Describe your deck and the look, it derives a bespoke style and renders polished 1920x1080 HTML slides with real charts, tables and imagery. Agent skill: npx skills add SlideSpeak/slide-design-skill",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "matongAI-lab/html-visual-editor",
+     "url": "https://github.com/matongAI-lab/html-visual-editor",
+     "text": "帮助非程序员把 AI 生成的 HTML 改到能用 | A browser-based visual touch-up tool for AI-generated static HTML. No install — just double-click index.html.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "EthanXiang777/ash-agents",
+     "url": "https://github.com/EthanXiang777/ash-agents",
+     "text": "A swarm of disposable agents for unattributable web interaction",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "Sajadapp/Youtube-Trend-Analyzer",
+     "url": "https://github.com/Sajadapp/Youtube-Trend-Analyzer",
+     "text": "Async Python bot that scrapes YouTube trends, analyzes viral strategies with Gemini LLM, and dispatches HTML reports to Telegram.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "Raidriar7170/hermes-skilleval",
+     "url": "https://github.com/Raidriar7170/hermes-skilleval",
+     "text": "Verification-gated skill routing and self-improvement harness for Hermes-style agent skills",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "Linwei-Chen/paper-deep-reader-skill",
+     "url": "https://github.com/Linwei-Chen/paper-deep-reader-skill",
+     "text": "Cross-disciplinary, source-grounded paper deep-reading Agent Skill with vision/text-only routes, domain lenses, and evidence audits.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "IvanMurzak/Godot-MCP",
+     "url": "https://github.com/IvanMurzak/Godot-MCP",
+     "text": "Godot-MCP — Model Context Protocol (MCP) integration for the Godot Engine. AI tools for the Godot Editor in C#, with cloud connection to ai-game.dev. Apache-2.0.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "BitMiracle-AI/Dormice",
+     "url": "https://github.com/BitMiracle-AI/Dormice",
+     "text": "The SQLite of agent sandboxes — self-hosted, E2B-compatible. One machine, sandboxes that live forever, idle costs nothing.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "extracurricular-ai/FlowGround",
+     "url": "https://github.com/extracurricular-ai/FlowGround",
+     "text": "Learn and debug logic visually — drag-and-drop flowcharts that run on a real graph-execution engine.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "maheerCodes/free-ai-automation-n8n-ollama",
+     "url": "https://github.com/maheerCodes/free-ai-automation-n8n-ollama",
+     "text": "Ultimate Multilingual Guide for Cost-Free AI Automation: Connect n8n with Local LLMs via Ollama. Includes hardware-specific advice, troubleshooting, and step-by-step setup for Windows, macOS, and Linux. Available in English, বাংলা, हिन्दी, Español, Français, and العربية.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "Nexis-AI/NexBench",
+     "url": "https://github.com/Nexis-AI/NexBench",
+     "text": "NEXBENCH measures what an autonomous agent can actually do on-chain — execute transactions, route swaps, bridge funds, manage DeFi positions, research tokens, catch drainers, reconstruct portfolios, and run treasury governance — across 214 tasks in 8 categories, each run 5 times against deterministic forked-mainnet environments.",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "jrrhuang/fmrg",
+     "url": "https://github.com/jrrhuang/fmrg",
+     "text": "Official codebase for the paper \"How to Guide Your Flow: Few-Step Alignment via Flow Map Reward Guidance\" (ICML 2026).",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "ProxyShard/ShardBrowser",
+     "url": "https://github.com/ProxyShard/ShardBrowser",
+     "text": "Free, open-source anti-detect browser launcher for web scraping and multi-accounting. By the ProxyShard team. Engine-level fingerprint spoofing in Chromium 148 (WebGL / WebGPU / Client Hints / fonts / TLS), 170+ device profiles bundled, stable QUIC + WebRTC over SOCKS5.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "Deniska1980-data/ai-hr-recruitment-workflow",
+     "url": "https://github.com/Deniska1980-data/ai-hr-recruitment-workflow",
+     "text": "AI řízený HR náborový workflow s využitím Microsoft 365, SharePointu, Azure Logic Apps a Azure OpenAI. / AI-powered HR recruitment workflow using Microsoft 365, SharePoint, Azure Logic Apps and Azure OpenAI.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "el-amin-dev/oracle-stack",
+     "url": "https://github.com/el-amin-dev/oracle-stack",
+     "text": "Reproducible Oracle Database 23ai + APEX 26.1 + ORDS 26.1 stack on Docker Compose. Zero to working stack in ~20 minutes.",
+     "score": 20
+    },
+    {
+     "source": "github",
+     "title": "usr-wwelsh/Blopple",
+     "url": "https://github.com/usr-wwelsh/Blopple",
+     "text": "No-code Doom-style game maker: build maps, textures, and music in the browser, ship a self-contained ~1MB playable HTML.",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "dasgltd/n8n-workflows",
+     "url": "https://github.com/dasgltd/n8n-workflows",
+     "text": "A collection of open-source n8n workflows for system administration and automation.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "u7079256/paperjury",
+     "url": "https://github.com/u7079256/paperjury",
+     "text": "Pre-submission AI review stress-test for research papers. A Claude Code skill: review, verdict, revise, verify.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "crabbuild/compass",
+     "url": "https://github.com/crabbuild/compass",
+     "text": "Native, local-first knowledge graph engine for code and project artifacts—inspired by Graphify, built in Rust, and evolving beyond it.",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "Nigh/show-me-the-story",
+     "url": "https://github.com/Nigh/show-me-the-story",
+     "text": "Self-hosted AI novel generator: single Go binary + web UI. OpenAI-compatible API → outline → chapter-by-chapter writing with review, foreshadowing, fact-check, and full-book polish. Chinese &  English.",
+     "score": 60
+    },
+    {
+     "source": "github",
+     "title": "olbboy/realflow",
+     "url": "https://github.com/olbboy/realflow",
+     "text": "Node-based UIs for React, reimagined — undo/redo, auto-layout, viewport culling, typed ports, AI-agent ops & real-time collaboration built in and free. An open-source React Flow alternative.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "VantageInc/LucyLive-AI-Render",
+     "url": "https://github.com/VantageInc/LucyLive-AI-Render",
+     "text": "Real-time AI creative preview plugin for Cinema 4D",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "secureagentics/Adrian",
+     "url": "https://github.com/secureagentics/Adrian",
+     "text": "Open-source runtime AI agent security tool - monitors and controls AI agents, catching malicious tool use, prompt injection, and policy drift in real time, before the agent acts.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "ohad6k/emulo",
+     "url": "https://github.com/ohad6k/emulo",
+     "text": "Mine your Claude Code and Codex logs into a local you.md agent profile.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "imohamedzaki/laravel-process-builder",
+     "url": "https://github.com/imohamedzaki/laravel-process-builder",
+     "text": "A visual process builder for designing Laravel routes, controllers, actions, validations, services, and application workflows.",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "U-C4N/U-Pool",
+     "url": "https://github.com/U-C4N/U-Pool",
+     "text": "Desktop provider switcher for Claude Code and Codex. Keep every endpoint, API key, and model in one place, switch the active provider in one click, and probe latency before you start. Atomic writes and rolling backups keep your configs safe. Python + Next.js in a native OS webview.",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "Apeironics/prompt-refine-skill",
+     "url": "https://github.com/Apeironics/prompt-refine-skill",
+     "text": "Agent Skill that silently refines prompts for the currently running model",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "molnify/molnify-app-builder-skill",
+     "url": "https://github.com/molnify/molnify-app-builder-skill",
+     "text": "Official Agent Skill for building Molnify apps - turn Excel/Google Sheets formulas into spreadsheet-driven web apps. Create from scratch, convert existing spreadsheets, validate and style. Works with Claude Code, Claude.ai, and any skills-compatible AI.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "PxA-Labs/AutoMaintainer",
+     "url": "https://github.com/PxA-Labs/AutoMaintainer",
+     "text": "An Always-On Autonomous AI Software Engineering Team built with LangGraph, FastAPI, and Next.js that operates natively within your GitHub repositories.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "uvwt/agentdock",
+     "url": "https://github.com/uvwt/agentdock",
+     "text": "Secure MCP runtime for AI agents to operate local machines, servers, and containers with multi-device orchestration.",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "bagidea/bagidea-office",
+     "url": "https://github.com/bagidea/bagidea-office",
+     "text": "A living AI-agent office on your desktop wallpaper — Claude Code agents that walk, work, delegate, learn & hold meetings. Per-agent swappable models (Claude/GLM/DeepSeek/Qwen/Kimi/OpenAI/Gemini/Groq/Ollama…), workflows, plugins, voice & Telegram/Discord/LINE. Open source.",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "clawkwork/clawk",
+     "url": "https://github.com/clawkwork/clawk",
+     "text": "Give coding agents a disposable Linux VM, not your laptop",
+     "score": 70
+    },
+    {
+     "source": "github",
+     "title": "jauzin23/CAMron",
+     "url": "https://github.com/jauzin23/CAMron",
+     "text": "Browser-based ESP32-CAM firmware flashing and camera management. Self-hosted, local, no code",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "oleksiijko/pmb",
+     "url": "https://github.com/oleksiijko/pmb",
+     "text": "Local-first persistent memory for AI coding agents (Claude Code, Cursor, Codex) over MCP. Decisions, lessons and facts live in one SQLite file on your disk. Offline, multilingual.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "michaelshimeles/boring-computers",
+     "url": "https://github.com/michaelshimeles/boring-computers",
+     "text": "On-demand Linux computers you can hand to an AI — real Firecracker microVMs with a browser, terminal, coding agents, and an AI that drives them.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "uu201/character-arc",
+     "url": "https://github.com/uu201/character-arc",
+     "text": "AI 小说创作应用，集项目设定、角色关系、剧情大纲、章节写作与多模型 AI 协作于一体",
+     "score": 20
+    },
+    {
+     "source": "github",
+     "title": "sairaman436/vybe-intelligence-vault",
+     "url": "https://github.com/sairaman436/vybe-intelligence-vault",
+     "text": "An auto-updating open-source vault for AI agents, RAG systems, MCP servers, prompts, tools, templates, and next-generation web development.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "sparklabx/drawio-ai-kit",
+     "url": "https://github.com/sparklabx/drawio-ai-kit",
+     "text": "Teach your AI to draw correct, beautiful draw.io diagrams — declarative layout engine, ground-truth stencils, structural validator, vision self-check. AWS · Azure · GCP · Databricks · BPMN. Zero dependencies.",
+     "score": 70
+    },
+    {
+     "source": "github",
+     "title": "kadevin/ilab-conjure",
+     "url": "https://github.com/kadevin/ilab-conjure",
+     "text": "面向 GPT-image-2 的 AI 图片生成 WebUI 工作台，支持 Codex Responses 与 OpenAI 兼容 API 接入，内置公用图库、多类型 Chip 快捷引用、提示词模板、多任务并发和本地队列管理。An AI image generation WebUI workbench for GPT-image-2 with Codex Responses and OpenAI-compatible API support, shared gallery references, multi-type quick chips, prompt templates, concurrent tasks, and local queue management.",
+     "score": 60
+    },
+    {
+     "source": "github",
+     "title": "extra-org/extra",
+     "url": "https://github.com/extra-org/extra",
+     "text": "Turn your app into an agentic product from one YAML file",
+     "score": 30
+    },
+    {
+     "source": "github",
+     "title": "CodeBendKit/codeseek",
+     "url": "https://github.com/CodeBendKit/codeseek",
+     "text": "Rust-powered code intelligence CLI for AI coding agents. Builds call graphs and hybrid semantic search indexes (Dense + Sparse + RRF + Reranker) across 7 languages. Ships as native MCP tools for Claude Code and Codex CLI.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "qmmughal/dotnet-agent-framework",
+     "url": "https://github.com/qmmughal/dotnet-agent-framework",
+     "text": "A lightweight, enterprise-ready multi-agent orchestration framework for the .NET ecosystem. Build autonomous AI agents, equip them with tools, and orchestrate complex RAG workflows in C#.",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "cuihuan/awesome-ai-gateway",
+     "url": "https://github.com/cuihuan/awesome-ai-gateway",
+     "text": "⚡ Awesome AI Gateway — pick an AI gateway from 100+ (LiteLLM, OpenRouter, Portkey, Kong, Higress, new-api, Bifrost) by cost, security & compliance, learn how they actually work from an 8-chapter handbook, and verify every number yourself. Reproducible benchmarks, bilingual, updated daily.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "entropyvortex/meta-llm-charter",
+     "url": "https://github.com/entropyvortex/meta-llm-charter",
+     "text": "Compact operational charter that turns LLM coding agents into disciplined principal engineers. Eleven rules + one meta-rule.",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "Alisa0808/vox-director",
+     "url": "https://github.com/Alisa0808/vox-director",
+     "text": "Turn one topic into a finished Vox-style paper-collage explainer/ad video — automated end to end on Atlas Cloud + ffmpeg. An agent skill.",
+     "score": 70
+    },
+    {
+     "source": "github",
+     "title": "sodam-ai/Docker_One-Click_Kit",
+     "url": "https://github.com/sodam-ai/Docker_One-Click_Kit",
+     "text": "비개발자도 더블클릭만으로 Docker 설치·실행·관리·제거하고 인기 앱 45종을 골라 바로 실행하는 Windows 원클릭 키트",
+     "score": 20
+    },
+    {
+     "source": "github",
+     "title": "api-evangelist/mendix",
+     "url": "https://github.com/api-evangelist/mendix",
+     "text": "Mendix, a Siemens company, is an enterprise low-code application development platform for designing, building, deploying, and operating multi-experience applications across web, mobile, and conversational interfaces.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "Darwin-Agent/Mi-Memory",
+     "url": "https://github.com/Darwin-Agent/Mi-Memory",
+     "text": "Mi-Memory: A Composable, Evolvable, and Multi-Source Memory System for Daily Assistant Agents",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "ninihen1/copilot-studio-itsm-agent",
+     "url": "https://github.com/ninihen1/copilot-studio-itsm-agent",
+     "text": "Autonomous IT service desk built entirely on Microsoft 365 — Copilot Studio, Power Automate, and SharePoint. Ticket → triage → approve → execute, no per-seat SaaS fees. Microsoft Agent Academy Hackathon winner.",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "jmerelnyc/Talos",
+     "url": "https://github.com/jmerelnyc/Talos",
+     "text": "GPU worker client for the Talos network. Pairs with your Talos account, serves open-model inference jobs over a WebSocket, and reports uptime for payouts.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "msradam/theodosia",
+     "url": "https://github.com/msradam/theodosia",
+     "text": "Put an AI agent on rails: mount a Burr state machine as an MCP server so the agent can only take the next allowed step, with every step recorded and replayable.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "AtlasCloudAI/awesome-seedance-2.5-prompts-skills",
+     "url": "https://github.com/AtlasCloudAI/awesome-seedance-2.5-prompts-skills",
+     "text": "100+ curated Seedance 2.5 prompts with real video previews, plus an installable Agent Skill that optimizes prompts, creates storyboards, and generates videos via Seedance models.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "Mr-funny/hbg-classical-poem-silk-video",
+     "url": "https://github.com/Mr-funny/hbg-classical-poem-silk-video",
+     "text": "Agent Skill for turning Chinese classical poems into vertical Chinese-art videos with ImageGen stills, Docker I2V, calligraphy captions, retained ambience, BGM and final MP4 QA.",
+     "score": 60
+    },
+    {
+     "source": "github",
+     "title": "Tayyabzunair/algotrix",
+     "url": "https://github.com/Tayyabzunair/algotrix",
+     "text": "No-code AutoML platform — upload a CSV and get a trained ML model in minutes.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "grft-dev/graftcode",
+     "url": "https://github.com/grft-dev/graftcode",
+     "text": "Connect any code. Call as dependency. The official repository for Graftcode: the integration-free development layer that lets you call methods across languages and runtimes on remote services as if they were local. Eliminate integration layer code entirely.",
+     "score": 50
+    },
+    {
+     "source": "github",
+     "title": "VILA-Lab/FigMirror",
+     "url": "https://github.com/VILA-Lab/FigMirror",
+     "text": "An Automated AI Agent Tool for Plotting Your Data in Any Paper's Figure Style.",
+     "score": 55
+    },
+    {
+     "source": "github",
+     "title": "tykimos/agent-native-agent",
+     "url": "https://github.com/tykimos/agent-native-agent",
+     "text": "Self-hosted apps you operate by watching a dashboard and talking to a coding agent that IS the runtime — it proposes, applies, and evolves the app live. Built for Claude Code and MCP.",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "AnXMuy/AgenticASR",
+     "url": "https://github.com/AnXMuy/AgenticASR",
+     "text": "Official Repo for \"AgenticASR: Refining Speech Recognition in Real-World Scenarios via an Agentic Approach\"",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "modiqo/skillspec",
+     "url": "https://github.com/modiqo/skillspec",
+     "text": "SkillSpec makes agent skills followable, testable, and provable with Doctor risk reports, guided imports, structured contracts, and alignment proof.",
+     "score": 70
+    },
+    {
+     "source": "github",
+     "title": "yashab-cyber/opendroid",
+     "url": "https://github.com/yashab-cyber/opendroid",
+     "text": "Your Open Autonomous Android Agent — A production-ready, self-planning AI assistant powered by local/remote LLMs and accessibility-driven screen automation.",
+     "score": 45
+    },
+    {
+     "source": "github",
+     "title": "yang-ai-lab/SensorGen",
+     "url": "https://github.com/yang-ai-lab/SensorGen",
+     "text": "Generative Models for Real-World Sensor Time Series",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "fczavian/DiscordBot-Builder",
+     "url": "https://github.com/fczavian/DiscordBot-Builder",
+     "text": "A visual drag-and-drop Discord bot creation platform built with Next.js 16, React 19, Discord.js v14, and MongoDB. Design, customize, and deploy fully functional Discord bots visually with 37+ built-in blocks for triggers, moderation, automated slash commands, role management, interactive UI components, flow control, and live process logs.",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "dacnay816y62-hub/fantasy-dongfang-jianyuehaibao",
+     "url": "https://github.com/dacnay816y62-hub/fantasy-dongfang-jianyuehaibao",
+     "text": "东方文化编辑海报 v2 Codex skill：Image 2 出图、中文标题精炼、真实文化物证、A/B/C 三联测试",
+     "score": 40
+    },
+    {
+     "source": "github",
+     "title": "asset-group/ghostcommit",
+     "url": "https://github.com/asset-group/ghostcommit",
+     "text": "PoC for GhostCommit Attack: Steal secrets via a pull request pointing to an image",
+     "score": 30
+    }
+   ],
+   "topics": [],
+   "raw": ""
+  }
+ }
+}

@@ -1,0 +1,11 @@
+sqlalchemy==2.0.51
+requests==2.34.2
+openai==2.45.0
+pyyaml==6.0.3
+python-dotenv==1.2.2
+playwright==1.61.0
+pywebview==6.2.1
+winotify==1.1.0; sys_platform == "win32"
+# macOS only: lets the app post its own notification, so the banner carries the app
+# icon. osascript cannot — the banner would wear Script Editor's icon instead.
+pyobjc-framework-UserNotifications==12.2.2; sys_platform == "darwin"

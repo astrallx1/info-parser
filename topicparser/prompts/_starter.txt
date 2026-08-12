@@ -1,0 +1,7 @@
+Your rules go here.
+
+This file decides what reaches your feed: the model scores every signal 0-100
+against what you write, and 70 or above is shown.
+
+Open the guide under this box, copy the text it gives you into ChatGPT or Claude,
+answer its questions, and paste the rules it writes back here.

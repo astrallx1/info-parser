@@ -1,0 +1,2505 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- pywebview serves this page from http://127.0.0.1:<port> and its JS<->Python
+     bridge needs same-origin XHR plus eval, so 'self'/'unsafe-eval' are required
+     (a probe with them removed dies with EvalError before the UI ever loads).
+     What this still buys: NO other origin can be reached or loaded, so script that
+     ever did slip into a card has nowhere to send anything. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; form-action 'none'; base-uri 'none'">
+<title>Info Parser</title>
+<style>
+  /* Dark, derived from the IQON monitoring dashboard the owner picked as the reference
+     (2026-08-08). Rules that took a dozen rejected attempts to land, keep them:
+       - surfaces are NEUTRAL, no tint. A raised green channel reads as "everything is green".
+       - flat: solid fill + 1px border. No card gradients.
+       - no pure #FFFFFF anywhere; the score is the brightest thing on screen.
+       - green is deep (#1FA96F) and appears in three places only: the primary button,
+         the status dot, the trending icon. Filled green surfaces were rejected.
+       - colour identifies the SOURCE: blue Twitter, violet GitHub, green trending.
+       - three radii only, one easing. */
+  :root{
+    --bg:#08090A; --surface:#131415; --inset:#0E0F10;
+    /* --faint is 4.7 on --bg but these caps labels sit on --surface, where it measured
+       4.36 — under the 4.5 floor on the very smallest type in the app. Raised until it
+       clears 4.5 on ALL THREE surfaces (bg 5.12 / surface 4.74 / inset 4.93). Measure a
+       colour against the surface it actually lands on, not against the page. */
+    /* Four text tiers, measured against --bg: 15.9 / 8.9 / 6.5 / 4.7. The first
+       version ran 14.9 / 6.7 / 4.5 / 3.2 and the owner read the whole UI as faded.
+       Cause was not one colour: --dim was the MOST used colour in the file (41 uses,
+       more than --text itself) at 4.5, and --faint failed WCAG outright. The gap
+       between tiers is what carries hierarchy, so all four moved together and --text
+       stays below --score — the score is still the brightest thing on screen and
+       pure #FFFFFF still appears nowhere. */
+    --text:#E3E6E8; --muted:#A8AEB2; --dim:#8E9498; --faint:#7C8286;
+    --border:#232426; --border-hi:#313335;
+    --primary:#1FA96F; --primary-hover:#26BC7D; --on-primary:#04180F;
+    --danger:#D2604C; --score:#E8EBEC;
+    --tw-fg:#4FA9CE; --gh-fg:#9B72C8; --feed-fg:#C79A55;
+    --flame:#1FA96F;
+    --check:#3C4043; --check-hover:#4B4F52;
+    --r-lg:16px; --r-md:10px; --r-sm:6px;
+    --ease:cubic-bezier(0.23,1,0.32,1);
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; }
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Inter,sans-serif;
+    font-size:15px; color:var(--text); background:var(--bg);
+    /* antialiased is BACK. Removing it (to fight the faded look) handed macOS back its
+       subpixel rendering, and on a dark background that puts colour fringes on every
+       stem — the owner read it as text that "washes out" and blurs. Grayscale AA is
+       the right call on dark; the weight that removal was chasing comes from the
+       font-weight bump below instead. */
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    text-rendering:optimizeLegibility;
+    font-weight:450;
+    /* The root cause of "the text is squashed everywhere": body carried NO line-height, so every
+       element without an explicit one inherited the browser default of roughly 1.2 —
+       labels, list rows, table cells, headings, chips, the lot. Only the handful of
+       places with a hand-written line-height escaped it. */
+    line-height:1.65;
+    position:relative;
+  }
+  /* the only green outside the three spots above: ambient light under the window */
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:radial-gradient(1200px 620px at 50% 116%, rgba(31,169,111,.04), transparent 58%);
+  }
+  .ic{ width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:1.8;
+       stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+  .ic.fill{ fill:currentColor; stroke:none; }
+  .mono{ font-family:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",monospace;
+         font-variant-numeric:tabular-nums; }
+  button{ font:inherit; cursor:pointer; border:none; background:none; color:inherit; }
+  a{ color:var(--tw-fg); }
+  :focus-visible{ outline:2px solid var(--primary); outline-offset:2px; border-radius:var(--r-sm); }
+
+  /* layout */
+  .app{ display:flex; height:100vh; overflow:hidden; position:relative; z-index:1; }
+  .sidebar{ width:210px; flex-shrink:0; background:var(--surface);
+    border-right:1px solid var(--border); padding:18px 12px; display:flex; flex-direction:column; gap:3px; }
+  .brand{ display:flex; align-items:center; gap:9px; font-weight:700; font-size:16px;
+    letter-spacing:-.02em; padding:0 9px 18px; border-bottom:1px solid var(--border); margin-bottom:14px; }
+  /* NO tile behind the mark. The artwork already IS a rounded square, so an inset
+     panel with its own border and radius sat around a second rounded square and read
+     as a dark box swallowing the logo. The mark carries the shape; the box only
+     shrank it. */
+  .brand .mk{ width:30px; height:30px; display:flex; align-items:center; justify-content:center; }
+  /* The logo carries no `ic` class, so nothing sized it, and an auto-sized inline svg
+     collapses to 0x0 as a flex item in the WebKit pywebview uses (measured), while
+     Chrome stretches it to the box. That is why the sidebar showed an empty tile in
+     the app and a correct mark in the browser harness. */
+  .brand .mk .ic, .brand .mk svg{ width:30px; height:30px; }
+  .nav-item{ display:flex; align-items:center; gap:11px; padding:9px 11px; border-radius:var(--r-md);
+    color:var(--dim); font-weight:500; font-size:13.5px; text-align:left; width:100%;
+    transition:background-color .15s var(--ease), color .15s var(--ease); }
+  .nav-item:hover{ color:var(--text); background:rgba(255,255,255,.035); }
+  .nav-item.active{ background:rgba(255,255,255,.06); color:var(--text); font-weight:600; }
+  .nav-item:active{ transform:scale(.985); }
+  .nav-count{ margin-left:auto; font-family:ui-monospace,"SF Mono","JetBrains Mono",monospace;
+    font-variant-numeric:tabular-nums; font-size:11.5px; font-weight:600; line-height:1;
+    padding:3px 7px; border-radius:999px; background:rgba(255,255,255,.05); color:var(--dim); }
+  .nav-item.active .nav-count{ background:rgba(255,255,255,.07); color:var(--muted); }
+  .nav-count[hidden]{ display:none; }
+  .content{ flex:1; overflow-y:auto; padding:22px 30px 48px; }
+  .content::-webkit-scrollbar{ width:10px; }
+  .content::-webkit-scrollbar-thumb{ background:#202224; border-radius:999px; }
+  .view[hidden]{ display:none; }
+  /* the page title and its explanatory paragraph were removed on the owner's call —
+     every screen starts at its content, the sidebar says where you are */
+  .view-title{ display:none; }
+  .view-sub{ display:none; }
+
+  .btn-primary{ display:inline-flex; align-items:center; gap:7px; background:var(--primary);
+    color:var(--on-primary); padding:9px 17px; border-radius:var(--r-md); font-weight:600; font-size:13px;
+    transition:background-color .15s var(--ease); }
+  .btn-primary:hover{ background:var(--primary-hover); }
+  .btn-primary:active{ transform:scale(.97); }
+  /* A disabled primary stayed green at .45 and still read as pressable. Dead means
+     grey — the button says "not yet", the hint under it says why. */
+  .btn-primary:disabled{ background:var(--inset); color:var(--faint);
+    border:1px solid var(--border); cursor:default; transform:none; }
+  .btn-primary:disabled:hover{ background:var(--inset); }
+  .btn-ghost{ display:inline-flex; align-items:center; gap:6px; color:var(--muted);
+    padding:9px 14px; border-radius:var(--r-md); font-size:13px;
+    background:var(--inset); border:1px solid var(--border);
+    transition:color .15s var(--ease), border-color .15s var(--ease); }
+  .btn-ghost[hidden]{ display:none; }
+  .btn-ghost:disabled{ opacity:.4; cursor:default; pointer-events:none; }
+  .btn-ghost:hover{ color:var(--text); border-color:var(--border-hi); }
+  .btn-ghost:active{ transform:scale(.97); }
+  .btn-ghost.danger{ color:var(--danger); }
+  .btn-ghost.danger:hover{ border-color:rgba(210,96,76,.4); }
+
+  /* feed */
+  .profile-box{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg);
+    padding:18px; margin-bottom:8px; }
+  .box-label{ font-size:10.5px; text-transform:uppercase; letter-spacing:.14em; color:var(--faint);
+    font-weight:700; margin-bottom:12px; }
+  .profile-row{ display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+    margin-top:16px; padding-top:16px; border-top:1px solid var(--border); }
+  .cbox{ width:14px; height:14px; border-radius:4px; border:1px solid var(--border-hi);
+    display:flex; align-items:center; justify-content:center; color:transparent;
+    transition:background-color .15s var(--ease), border-color .15s var(--ease); }
+  .cbox.on{ background:var(--check); border-color:var(--check-hover); color:var(--text); }
+  .cbox .ic{ width:10px; height:10px; stroke-width:3; }
+  .spacer{ flex:1; }
+  .status{ font-size:13px; color:var(--muted); margin-left:4px; }
+
+  .source-section{ display:flex; align-items:center; gap:10px; margin:26px 2px 12px; color:var(--muted); }
+  .source-section .ic{ width:15px; height:15px; color:var(--dim); }
+  .source-section .h{ font-weight:700; font-size:10.5px; text-transform:uppercase; letter-spacing:.2em; }
+  .source-section .cnt{ font-size:11.5px; color:var(--dim); font-variant-numeric:tabular-nums;
+    border:1px solid var(--border); border-radius:999px; padding:2px 9px; }
+  /* The source colour belongs on the badge, the count outline and hit-tags — nowhere
+     else. The feed's section headers carried none of it, so a Twitter block and a
+     GitHub block read identically while their cards did not. Outline only: a filled
+     pill here would be a coloured surface, which is exactly what was rejected. */
+  .source-section.tw .cnt{ color:var(--tw-fg); border-color:rgba(79,169,206,.4); }
+  .source-section.gh .cnt{ color:var(--gh-fg); border-color:rgba(155,114,200,.4); }
+  .source-section.feed .cnt{ color:var(--feed-fg); border-color:rgba(199,154,85,.4); }
+  .source-section .line{ flex:1; height:1px; background:var(--border); }
+  .source-section[data-sec-toggle]{ cursor:pointer; }
+  .sec-collapse{ background:none; border:none; color:var(--faint); cursor:pointer; padding:2px;
+    margin:-2px -2px -2px 0; display:flex; align-items:center; transition:transform .15s var(--ease); }
+  .source-section:hover .sec-collapse{ color:var(--text); }
+  .feed-section.collapsed .sec-collapse{ transform:rotate(-90deg); }
+  .feed-section.collapsed .section-body{ display:none; }
+
+  .topic-card{ display:flex; gap:13px; background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-lg); padding:17px 19px; margin-bottom:10px;
+    transition:border-color .15s var(--ease); }
+  .topic-card:hover{ border-color:var(--border-hi); }
+  .keep{ width:20px; height:20px; border-radius:var(--r-sm); border:1px solid var(--border-hi);
+    flex-shrink:0; margin-top:2px; display:flex; align-items:center; justify-content:center;
+    color:var(--text); background:transparent; transition:background-color .15s var(--ease); }
+  .keep.on{ background:rgba(255,255,255,.05); }
+  .keep .ic{ width:13px; height:13px; stroke-width:2.6; opacity:0; } .keep.on .ic{ opacity:1; }
+  .keep:active{ transform:scale(.94); }
+  .card-body{ flex:1; min-width:0; }
+  .card-top{ display:flex; align-items:center; gap:10px; }
+  .badge{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; }
+  .badge .ic{ width:13px; height:13px; }
+  .badge.tw{ color:var(--tw-fg); }
+  .badge.gh{ color:var(--gh-fg); }
+  .badge.feed{ color:var(--feed-fg); }
+  .badge.other{ color:var(--dim); }
+  .score{ font-weight:700; font-size:22px; letter-spacing:-.03em; color:var(--score);
+    font-variant-numeric:tabular-nums; line-height:1; }
+  .card-top-right{ margin-left:auto; }
+  .card-title{ font-weight:600; font-size:15.5px; margin:11px 0 7px; line-height:1.5;
+    letter-spacing:-.012em; color:var(--text); overflow-wrap:anywhere; }
+  .card-why{ font-size:13.5px; color:var(--muted); line-height:1.65; }
+  /* facts live in a band at the BOTTOM of the card — floating them to the right
+     squeezed the title into a narrow column and left a gap under the badge */
+  .card-foot{ display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+    margin-top:13px; padding-top:12px; border-top:1px solid var(--border); }
+  .card-meta{ display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+    font-size:12px; color:var(--dim); }
+  .card-meta .cm-stars{ display:inline-flex; align-items:center; gap:4px;
+    color:var(--muted); font-weight:600; font-variant-numeric:tabular-nums; }
+  .card-meta .cm-stars .ic{ width:13px; height:13px; }
+  .card-meta .cm-dot{ color:var(--faint); }
+  .card-tags{ display:flex; flex-wrap:wrap; gap:5px; margin-left:auto; }
+  .card-tags .tag{ font-size:11px; line-height:1; padding:5px 8px; border-radius:var(--r-sm);
+    background:var(--inset); color:var(--dim); border:1px solid var(--border);
+    white-space:nowrap; }
+  .card-tags .tag.hit{ background:transparent; border-color:rgba(155,114,200,.45);
+    color:var(--gh-fg); font-weight:600; }
+  .card-actions{ display:flex; gap:7px; margin-top:12px; flex-wrap:wrap; }
+  .act{ display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted);
+    background:var(--inset); border:1px solid var(--border); padding:6px 11px; border-radius:var(--r-md);
+    transition:color .15s var(--ease), border-color .15s var(--ease); }
+  .act:hover{ color:var(--text); border-color:var(--border-hi); }
+  .act:active{ transform:scale(.97); }
+  .act.open:hover{ color:var(--tw-fg); border-color:rgba(79,169,206,.35); }
+  .act.danger:hover{ color:var(--danger); border-color:rgba(210,96,76,.35); }
+  .act.ban:hover{ color:var(--danger); border-color:rgba(210,96,76,.35); }
+  .act .ic{ width:13px; height:13px; }
+  /* `row-acts` sits on the <td> itself. `display:flex` there stops the cell being a table
+     cell at all — it pops out of the row and takes its bottom border with it, which is the
+     "columns slid off" the owner reported. Keep it a cell; the buttons are inline. */
+  .row-acts{ white-space:nowrap; text-align:right; }
+  .row-acts .unwatch + .unwatch{ margin-left:6px; }
+  .unwatch.ban:hover{ color:var(--danger); border-color:rgba(210,96,76,.35); }
+  .banned-row{ display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px 15px; background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-md); margin-bottom:8px; }
+  .banned-row .repo{ display:inline-flex; align-items:center; gap:7px; color:var(--text);
+    font-weight:500; text-decoration:none; } .banned-row .repo:hover{ color:var(--gh-fg); }
+  .banned-row .repo .ic{ width:15px; height:15px; }
+
+  /* An empty state used to be `icon + " " + sentence` inside one centred line, so the
+     SVG landed mid-sentence on the text baseline and a <br> glued two paragraphs
+     together. Icon above, headline, then the explanation, with room between them. */
+  .empty{ display:flex; flex-direction:column; align-items:center; text-align:center;
+    gap:10px; color:var(--dim); padding:52px 28px; font-size:13.5px; line-height:1.65;
+    border:1px dashed var(--border); border-radius:var(--r-lg); }
+  .empty .ic{ width:26px; height:26px; color:var(--faint); }
+  .empty .empty-title{ font-size:15px; font-weight:600; color:var(--muted); }
+  .empty .empty-body{ max-width:46ch; }
+  .warn-banner{ display:flex; gap:10px; align-items:flex-start; background:rgba(210,96,76,.07);
+    border:1px solid rgba(210,96,76,.3); border-radius:var(--r-md); padding:12px 14px; margin:4px 2px 14px; }
+  .warn-banner .ic{ color:var(--danger); flex-shrink:0; margin-top:1px; }
+  .warn-list{ font-size:13px; color:var(--muted); line-height:1.65; }
+  .source-section.trend .ic{ color:var(--flame); }
+  /* flex-start, not center: the card carries its action row now, and centring pushed
+     the flame and the velocity into the middle of a two-line body instead of lining
+     them up with the repo name. */
+  .trend-card{ display:flex; gap:14px; align-items:flex-start; background:var(--surface);
+    border:1px solid var(--border); border-radius:var(--r-lg); padding:15px 18px; margin-bottom:10px; }
+  .trend-card .card-actions{ margin-top:11px; }
+  .trend-ic{ display:grid; place-items:center; width:32px; height:32px; border-radius:var(--r-md);
+    background:var(--inset); border:1px solid var(--border); flex-shrink:0; }
+  .trend-ic .ic{ color:var(--dim); width:16px; height:16px; }
+  .trend-body{ flex:1; min-width:0; }
+  .trend-repo{ font-weight:600; font-size:15px; color:var(--text); text-decoration:none;
+    letter-spacing:-.015em; }
+  .trend-repo:hover{ color:var(--gh-fg); }
+  .trend-desc{ font-size:13px; color:var(--muted); margin-top:3px; line-height:1.65; }
+  .trend-metric{ text-align:right; flex-shrink:0; }
+  .trend-vel{ display:block; color:var(--text); font-weight:700; font-size:17px;
+    font-variant-numeric:tabular-nums; }
+  .trend-stars{ display:block; color:var(--dim); font-size:12px; margin-top:2px;
+    font-variant-numeric:tabular-nums; }
+
+  /* profiles */
+  .profiles-layout{ display:flex; gap:14px; align-items:flex-start; }
+  .profile-list{ width:238px; flex-shrink:0; background:var(--surface);
+    border:1px solid var(--border); border-radius:var(--r-lg); padding:15px; }
+  .plist-item{ display:flex; align-items:center; gap:8px; width:100%; text-align:left;
+    padding:9px 11px; border-radius:var(--r-md); font-weight:500; font-size:13.5px;
+    color:var(--muted); margin-bottom:3px;
+    transition:background-color .15s var(--ease), color .15s var(--ease); }
+  .plist-item:hover{ background:rgba(255,255,255,.035); color:var(--text); }
+  .plist-item.active{ background:rgba(255,255,255,.06); color:var(--text); font-weight:600; }
+  .plist-item .n{ margin-left:auto; font-size:11.5px; color:var(--dim); font-variant-numeric:tabular-nums; }
+  input[type=text],input[type=password]{ width:100%; padding:9px 12px; border:1px solid var(--border);
+    border-radius:var(--r-md); background:var(--inset); color:var(--text); font:inherit; font-size:13px; }
+  input[type=text]:focus,input[type=password]:focus{ outline:none; border-color:var(--border-hi); }
+  input[type=text]::placeholder,input[type=password]::placeholder{ color:var(--faint); }
+  select{ padding:9px 12px; border:1px solid var(--border); border-radius:var(--r-md);
+    background:var(--inset); color:var(--text); font:inherit; font-size:13px; }
+  select:focus{ outline:none; border-color:var(--border-hi); }
+  .editor{ flex:1; min-width:0; background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-lg); padding:22px 24px 24px; }
+  .editor-head{ display:flex; align-items:center; gap:12px; margin-bottom:22px;
+    padding-bottom:16px; border-bottom:1px solid var(--border); }
+  .editor-title{ font-size:21px; font-weight:700; letter-spacing:-.03em; color:var(--text); }
+  .rename{ font-size:21px; font-weight:700; padding:6px 10px; margin-left:-10px;
+    border:1px solid transparent; border-radius:var(--r-md); background:transparent;
+    color:var(--text); letter-spacing:-.03em; }
+  .rename:hover, .rename:focus{ border-color:var(--border-hi); background:var(--inset); outline:none; }
+  .block{ margin-bottom:26px; }
+  .block:last-of-type{ margin-bottom:20px; }
+  /* the source colour carries over from the feed, so a block is identifiable at a glance */
+  .block-title{ display:flex; align-items:center; gap:9px; font-weight:700; font-size:10.5px;
+    letter-spacing:.2em; text-transform:uppercase; color:var(--dim); margin-bottom:12px; }
+  .block-title .ic{ width:15px; height:15px; }
+  /* Colour by CLASS, never by position. As :nth-of-type these counted every sibling
+     <div> inside #editor, and .editor-head is the first one — so GitHub picked up the
+     Twitter blue and the Twitter block got no colour at all. */
+  .block.gh .block-title .ic{ color:var(--gh-fg); }
+  .block.tw .block-title .ic{ color:var(--tw-fg); }
+  /* Feeds get NO new hue. Colour identifies the source — blue X, violet GitHub, green
+     trending — and a fourth invented one is what reads as "random colours". Neutral
+     until this source earns a colour of its own. */
+  .block.feed .block-title .ic{ color:var(--feed-fg); }
+  /* each field is its own panel — as bare stacked rows the labels, help and chips ran
+     together and the screen read as one grey slab */
+  .field{ background:var(--inset); border:1px solid var(--border); border-radius:var(--r-md);
+    padding:14px 15px; margin-bottom:9px; }
+  .field:last-child{ margin-bottom:0; }
+  .field-label{ font-size:13px; font-weight:650; margin-bottom:3px; color:var(--text); }
+  .field-help{ font-size:13px; color:var(--dim); margin-bottom:11px; line-height:1.65; }
+  .tags{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .chip{ display:inline-flex; align-items:center; gap:7px; background:var(--surface);
+    border:1px solid var(--border-hi); color:var(--text);
+    padding:6px 7px 6px 10px; border-radius:var(--r-md); font-size:13px; font-weight:500; }
+  .chip-x{ display:flex; padding:2px; border-radius:4px; color:var(--faint); }
+  .chip-x:hover{ color:var(--text); background:rgba(255,255,255,.08); }
+  .chip-x .ic{ width:12px; height:12px; }
+  .chip-ic{ width:13px; height:13px; color:var(--dim); }
+  .chip-label{ max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chip-id{ color:var(--faint); font-size:11.5px; }
+  .chip-edit{ display:flex; padding:2px; border-radius:4px; color:var(--faint); }
+  .chip-edit:hover{ color:var(--text); background:rgba(255,255,255,.08); }
+  .chip-edit .ic{ width:12px; height:12px; }
+  .src-picker{ display:flex; flex-direction:column; gap:8px; margin-bottom:4px; }
+  .src-picker.locked{ opacity:.5; pointer-events:none; }
+  .src-group{ border:1px solid var(--border); border-radius:var(--r-md);
+    background:var(--inset); overflow:hidden; }
+  .src-head{ display:flex; align-items:center; gap:9px; padding:11px 13px; font-size:13px;
+    font-weight:600; user-select:none; cursor:pointer; }
+  .src-head .n{ margin-left:auto; font-size:11.5px; color:var(--dim); font-weight:400;
+    font-variant-numeric:tabular-nums; }
+  .src-body{ padding:0 13px 11px; display:flex; flex-direction:column; }
+  .src-sub{ display:flex; align-items:center; gap:8px; font-size:9.5px; font-weight:700;
+    letter-spacing:.16em; text-transform:uppercase; color:var(--faint);
+    user-select:none; cursor:pointer; padding:10px 0 8px; }
+  .src-sub .cbox{ width:13px; height:13px; }
+  .src-sub .kn{ margin-left:auto; font-size:11.5px; letter-spacing:0; text-transform:none;
+    font-weight:500; color:var(--dim); font-variant-numeric:tabular-nums; }
+  .src-sub:hover{ color:var(--dim); }
+  .src-items{ display:flex; gap:6px; flex-wrap:wrap; row-gap:6px; }
+  /* One element per source, not three. Each chip used to carry a checkbox square, a
+     tick glyph, a kind icon AND a border — 7 nodes each, 14 chips, and the kind icon
+     merely repeated the sub-header two lines above. The chip IS the checkbox now:
+     lit means included, dimmed and dashed means excluded. */
+  .src-item{ display:inline-flex; align-items:center; font-size:13px; user-select:none;
+    cursor:pointer; padding:6px 11px; border-radius:var(--r-sm); background:var(--surface);
+    border:1px solid var(--border-hi); color:var(--text);
+    transition:border-color .15s var(--ease), color .15s var(--ease), opacity .15s var(--ease); }
+  .src-item:hover{ border-color:var(--dim); }
+  .src-item.off{ background:transparent; border-style:dashed; border-color:var(--border);
+    color:var(--faint); }
+  .src-item.off:hover{ color:var(--dim); border-color:var(--dim); }
+  .src-collapse{ background:none; border:none; color:var(--faint); cursor:pointer; padding:2px;
+    margin:-2px -4px -2px 0; display:flex; align-items:center; transition:transform .15s var(--ease); }
+  .src-collapse:hover{ color:var(--text); }
+  .src-group.collapsed .src-collapse{ transform:rotate(-90deg); }
+  .src-group.collapsed .src-body{ display:none; }
+  .src-empty{ font-size:13px; color:var(--dim); padding-bottom:10px; }
+  /* an X source with no session: visible so you can see it exists, but not runnable */
+  .src-item.locked-src{ opacity:.45; pointer-events:none; }
+  .modal-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.62); display:flex;
+    align-items:center; justify-content:center; z-index:50; }
+  .modal-overlay[hidden]{ display:none; }
+  .modal{ width:380px; max-width:90vw; background:var(--surface); border:1px solid var(--border-hi);
+    border-radius:var(--r-lg); padding:22px; }
+  .modal-title{ font-size:16px; font-weight:650; margin-bottom:14px; letter-spacing:-.02em; }
+  .modal-label{ font-size:12.5px; color:var(--dim); margin-bottom:5px; } .modal-opt{ color:var(--faint); }
+  .modal-id{ font-size:13px; color:var(--dim); background:var(--inset); border:1px solid var(--border);
+    border-radius:var(--r-md); padding:9px 11px; margin-bottom:12px; word-break:break-all; }
+  .lm-name{ width:100%; margin-bottom:16px; }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:8px; }
+  .chip-input{ min-width:170px; flex:1; border:1px dashed var(--border-hi) !important; }
+  .chip-input:focus{ border-style:solid !important; border-color:var(--dim) !important; }
+  .editor-foot{ display:flex; align-items:center; gap:14px; margin-top:4px; }
+  .btn-save{ display:inline-flex; align-items:center; gap:7px; background:var(--primary);
+    color:var(--on-primary); padding:9px 20px; border-radius:var(--r-md); font-weight:600; font-size:13px;
+    transition:background-color .15s var(--ease); }
+  .btn-save:hover{ background:var(--primary-hover); }
+  .btn-save:active{ transform:scale(.97); }
+  .save-msg{ font-size:13px; color:var(--dim); } .save-msg.err{ color:var(--danger); }
+  .save-msg.ok{ color:var(--primary); }
+
+  /* tracked */
+  table{ width:100%; border-collapse:collapse; }
+  thead th{ text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.14em;
+    color:var(--faint); font-weight:700; padding:0 12px 11px; border-bottom:1px solid var(--border);
+    white-space:nowrap; }
+  thead th.num{ text-align:right; }
+  thead th.sortable{ cursor:pointer; user-select:none; }
+  thead th.sortable:hover{ color:var(--muted); }
+  .sort-arrow{ width:11px; height:11px; margin-left:4px; vertical-align:-1px;
+    transition:transform .15s var(--ease); }
+  .sort-arrow.asc{ transform:rotate(180deg); }
+  tbody td{ padding:14px 12px; border-bottom:1px solid var(--border); vertical-align:top; font-size:13px; }
+  tbody tr:hover td{ background:rgba(255,255,255,.02); }
+  tbody td.num{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .repo{ display:inline-flex; align-items:center; gap:8px; font-weight:600; cursor:pointer; }
+  .repo:hover{ color:var(--gh-fg); }
+  .repo .ic{ width:14px; height:14px; color:var(--dim); }
+  .repo-desc{ margin-top:5px; font-size:13px; color:var(--muted); line-height:1.65; max-width:52ch; }
+  .vel-up{ color:var(--primary); font-weight:600; display:inline-flex; align-items:center; gap:4px;
+    justify-content:flex-end; }
+  .vel-up .ic{ width:13px; height:13px; }
+  .vel-flat{ color:var(--dim); font-weight:600; }
+  .vel-measuring{ color:var(--faint); font-size:12.5px; font-style:italic; }
+  .unwatch{ display:inline-flex; align-items:center; gap:5px; color:var(--dim); font-size:12px;
+    background:var(--inset); border:1px solid var(--border); padding:5px 9px; border-radius:var(--r-sm);
+    transition:color .15s var(--ease), border-color .15s var(--ease); }
+  .unwatch:hover{ color:var(--text); border-color:var(--border-hi); }
+  .unwatch .ic{ width:12px; height:12px; }
+  .tracked-note{ margin-top:14px; font-size:13px; color:var(--dim); line-height:1.65; }
+
+  /* toast */
+  #toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--text); color:var(--bg); padding:10px 17px; border-radius:var(--r-md); font-size:13px;
+    font-weight:600; opacity:0; pointer-events:none;
+    transition:opacity .2s var(--ease), transform .2s var(--ease); z-index:100; }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* prompt editor */
+  .box-label.shared{ margin-top:20px; }
+  .prompt-head{ display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .prompt-name{ font-size:17px; font-weight:650; letter-spacing:-.02em; }
+  .prompt-about{ font-size:13px; color:var(--muted); line-height:1.65; margin-bottom:12px;
+    background:var(--inset); border:1px solid var(--border); border-radius:var(--r-md);
+    padding:11px 13px; max-width:80ch; }
+  /* An icon beside text MUST sit in a flex box. As a plain span the SVG lands on the
+     text baseline — here it left the lock 4px from the pill's top and 6.5px from its
+     bottom, which is exactly the skew the owner pointed at. */
+  .prompt-lock{ display:inline-flex; align-items:center; gap:6px; font-size:12px;
+    color:var(--dim); border:1px solid var(--border); border-radius:999px; padding:4px 11px; }
+  .prompt-lock .ic{ width:12px; height:12px; }
+  /* The file on the page is a PREVIEW, not an input. As a live textarea it was one
+     stray keystroke from being replaced, with a Save sitting right under it. */
+  /* 13px mono at 1.65 in a full-width box was a wall. Bigger, looser, and padded like
+     something meant to be read rather than a code dump. */
+  .prompt-preview{ width:100%; max-height:440px; overflow:auto; padding:20px 22px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:14px;
+    line-height:1.8; color:var(--muted); background:var(--inset); white-space:pre-wrap;
+    border:1px solid var(--border); border-radius:var(--r-md); }
+  .pe-overlay{ padding:36px; }
+  /* Sized to the TEXT, not the window. The prompt files are hard-wrapped (p90 = 85
+     chars, longest 125), so a 1100px box left ~350px of dead space to the right of
+     every line and the whole thing read as text shoved into the left edge. */
+  .pe-modal{ width:min(880px, 100%); height:100%; display:flex; flex-direction:column;
+    background:var(--surface); border:1px solid var(--border-hi); border-radius:var(--r-lg);
+    padding:18px 20px 20px; gap:14px; }
+  .pe-head{ display:flex; align-items:center; gap:10px; }
+  .pe-name{ font-family:ui-monospace,Menlo,monospace; font-size:15px; font-weight:650; }
+  /* ONE square icon button, used by every dismiss/row control. There used to be five
+     different ones — 34px r10 bordered (guide), 30px r6 bordered (editor), 28px r6
+     borderless (profile row), 16px r4 (chip) — which is what read as "the crosses are
+     crooked": not one of them was off-centre, they were all different sizes. */
+  .icon-btn{ width:30px; height:30px; flex:none; border-radius:var(--r-sm); display:grid; place-items:center;
+    color:var(--dim); border:1px solid var(--border); background:var(--inset);
+    transition:color .15s var(--ease), border-color .15s var(--ease); }
+  .icon-btn:hover{ color:var(--text); border-color:var(--border-hi); }
+  .icon-btn:active{ transform:scale(.94); }
+  .icon-btn .ic{ width:15px; height:15px; }
+  .pe-area{ flex:1; width:100%; resize:none; padding:20px 22px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:14px;
+    line-height:1.8; color:var(--text); background:var(--inset);
+    border:1px solid var(--border); border-radius:var(--r-md); }
+  .pe-area:focus{ outline:none; border-color:var(--border-hi); }
+  .pe-foot{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+  /* the way out of a bad edit; hidden until a save has actually replaced something */
+  #pe-restore[hidden]{ display:none; }
+  .guide{ margin-top:16px; border:1px solid var(--border); border-radius:var(--r-md);
+    background:var(--inset); overflow:hidden; }
+  .guide-head{ display:flex; align-items:center; gap:9px; width:100%; text-align:left;
+    padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); }
+  .guide-head:hover{ color:var(--text); }
+  .guide-head .ic{ width:15px; height:15px; }
+  .guide-chev{ transition:transform .15s var(--ease); }
+  .guide.open .guide-chev{ transform:rotate(180deg); }
+  .guide-body{ display:none; padding:0 14px 14px; }
+  .guide.open .guide-body{ display:block; }
+  .guide-steps{ margin:0 0 14px; padding-left:20px; color:var(--muted); font-size:13px;
+    line-height:1.7; }
+  .guide-steps li{ margin-bottom:7px; }
+  .prompt-note{ font-size:13px; color:var(--dim); line-height:1.65; margin-top:11px; }
+  .test-box{ margin-top:18px; border:1px solid var(--border); border-radius:var(--r-lg);
+    background:var(--inset); padding:15px 17px; }
+  .test-summary{ font-weight:650; margin-bottom:4px; }
+  .test-meta{ font-size:12.5px; color:var(--dim); line-height:1.65; }
+  .test-rows{ margin-top:12px; max-height:340px; overflow:auto; }
+  .test-row{ display:grid; grid-template-columns:1fr 54px 54px; gap:10px; align-items:baseline;
+    padding:8px 0; border-top:1px solid var(--border); font-size:13px; }
+  .test-row .t{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); }
+  .test-row .n{ font-family:ui-monospace,Menlo,monospace; text-align:right; font-size:13px;
+    font-variant-numeric:tabular-nums; }
+  .test-row .n.up{ color:var(--primary); font-weight:700; }
+  .test-row .n.none{ color:var(--faint); }
+  .test-head{ display:grid; grid-template-columns:1fr 54px 54px; gap:10px;
+    font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--faint); font-weight:700; }
+  /* profile list controls */
+  .plist-actions{ display:flex; gap:8px; margin-top:10px; padding-top:12px;
+    border-top:1px solid var(--border); }
+  .plist-actions .btn-ghost{ font-size:12.5px; padding:6px 11px; }
+  .prow{ display:flex; align-items:center; gap:4px; }
+  .prow .plist-item{ flex:1; }
+  .prow-btn.danger:hover{ color:var(--danger); border-color:rgba(210,96,76,.4); }
+  .plist-actions .btn-ghost.on{ color:var(--text); border-color:var(--border-hi);
+    background:rgba(255,255,255,.06); }
+  .plist-actions{ flex-wrap:wrap; }
+
+  /* settings + wizard */
+  /* Settings ran as a 760px column, so on a wide window the boxes sat pinned to the
+     left with dead space beside them while every other view ran full width. Boxes are
+     full width now, stacked, exactly like .profile-box on the feed. A two-column grid
+     was tried here first and rejected: it does not look like the rest of the app. */
+  .set-grid{ display:flex; flex-direction:column; gap:13px; }
+  .set-box{ border:1px solid var(--border); border-radius:var(--r-lg); background:var(--surface);
+    padding:20px; }
+  .set-box h3{ display:flex; align-items:center; gap:10px;
+    font-size:16px; font-weight:650; letter-spacing:-.015em; margin:0 0 18px;
+    padding-bottom:14px; border-bottom:1px solid var(--border); }
+  /* a STATE, not another help line. It was a bold sentence in the same grey stack as
+     the explanation and the instructions, so all three read as one block of noise. */
+  .pill{ font-size:11.5px; font-weight:600; padding:3px 10px; border-radius:999px;
+    color:var(--dim); border:1px solid var(--border); }
+  .pill.ok{ color:var(--primary); border-color:rgba(31,169,111,.4); }
+  .set-steps{ font-size:13px; color:var(--muted); line-height:1.65; margin-top:16px;
+    padding-top:16px; border-top:1px solid var(--border); }
+  /* the only irreversible control in the app; marked, not hidden */
+  .danger-zone{ border-color:rgba(210,96,76,.28); }
+  .danger-zone h3{ color:var(--danger); border-bottom-color:rgba(210,96,76,.28); }
+  .wipe-modal{ width:440px; }
+  .wipe-row{ display:flex; align-items:flex-start; gap:11px; padding:12px 13px; cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-md); background:var(--inset);
+    margin-bottom:8px; transition:border-color .15s var(--ease); }
+  .wipe-row:hover{ border-color:var(--border-hi); }
+  .wipe-row.on{ border-color:rgba(210,96,76,.4); }
+  .wipe-row .cbox{ margin-top:2px; }
+  .wipe-row.on .cbox{ background:var(--danger); border-color:var(--danger); color:#fff; }
+  .wipe-text{ display:flex; flex-direction:column; gap:3px; }
+  .wipe-name{ font-size:13.5px; font-weight:600; }
+  .wipe-n{ color:var(--dim); font-weight:500; }
+  .wipe-help{ font-size:12.5px; color:var(--dim); line-height:1.65; }
+  .wipe-modal .modal-actions{ margin-top:16px; }
+  /* Spacing was upside down: 3px between a label and its own help line, 20px between
+     one field and the next. So a help line sat closer to the NEXT field's label than
+     to the thing it explained, and the whole screen read as one squeezed slab. The
+     rule now is the ordinary one — gaps INSIDE a group are smaller than gaps BETWEEN
+     groups, and there is a rule line between fields to make the split visible. */
+  .set-field{ margin-bottom:26px; padding-bottom:26px; border-bottom:1px solid var(--border); }
+  .set-field:last-child{ margin-bottom:0; padding-bottom:0; border-bottom:none; }
+  .set-label{ font-weight:600; font-size:13.5px; margin-bottom:6px; }
+  .set-help{ font-size:13px; color:var(--dim); line-height:1.65; }
+  .set-row{ display:flex; gap:8px; align-items:center; margin-top:14px; }
+  /* the masked value used to float loose beside the button with nothing saying what
+     it was; it is a labelled pair now */
+  .set-current{ display:flex; flex-direction:column; gap:2px; }
+  .set-current .cap{ font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--faint); font-weight:700; }
+  .set-row input[type=text],.set-row input[type=password]{ flex:1; min-width:0; max-width:420px;
+    font-family:ui-monospace,Menlo,monospace; font-size:13px; }
+  .set-state{ font-size:12.5px; color:var(--dim); min-width:120px;
+    font-family:ui-monospace,Menlo,monospace; }
+  .set-state.ok{ color:var(--primary); font-weight:600; }
+  .set-state.bad{ color:var(--danger); font-weight:600; }
+  .set-actions{ display:flex; gap:10px; align-items:center; margin-top:16px;
+    padding-top:16px; border-top:1px solid var(--border); }
+  /* a field already ends on a rule — without this the two draw a double line */
+  .set-field + .set-actions{ border-top:none; padding-top:0; }
+  /* Tuning: two columns of short numeric fields, each an inset panel so the help line
+     belongs to its own label rather than sitting closer to the next one — the spacing
+     mistake the flat Settings stack made before. The text knob spans both. */
+  .tune-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; }
+  .tune-row{ background:var(--inset); border:1px solid var(--border);
+    border-radius:var(--r-md); padding:13px 14px; display:flex; flex-direction:column; }
+  .tune-row.wide{ grid-column:1 / -1; }
+  .tune-row .set-help{ flex:1; margin-bottom:11px; font-size:12.5px; }
+  .tune-row input{ width:100%; max-width:170px; padding:8px 10px;
+    font-family:ui-monospace,Menlo,monospace; font-size:13px; color:var(--text);
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--r-sm); }
+  .tune-row.wide input{ max-width:none; }
+  .tune-row input:focus{ outline:none; border-color:var(--border-hi); }
+  @media (max-width:1180px){ .tune-grid{ grid-template-columns:1fr; } }
+  .cookie-area{ width:100%; min-height:110px; resize:vertical; padding:12px;
+    font-family:ui-monospace,Menlo,monospace; font-size:12.5px; color:var(--muted);
+    background:var(--inset); border:1px solid var(--border); border-radius:var(--r-md); margin-top:12px; }
+  .cookie-area:focus{ outline:none; border-color:var(--border-hi); }
+  .cookie-area::placeholder{ color:var(--faint); }
+  /* The guide is a full SCREEN, not a modal. As a 620px box on the first launch it read
+     as a dialog to dismiss, and it can now be closed outright. */
+  /* Centred, not pinned to the top. A step is ~265px tall in an 860px window, so
+     align-items:flex-start left 600px of black under it and the content read as a
+     strip crammed into the corner. `auto` margins keep it centred while still
+     scrolling when a step is taller than the window, which `center` alone does not. */
+  .wiz-screen{ position:fixed; inset:0; z-index:60; background:var(--bg); overflow-y:auto;
+    display:flex; justify-content:center; padding:48px 28px; }
+  .wiz-screen[hidden]{ display:none; }
+  .wiz-inner{ width:100%; max-width:620px; margin:auto 0; }
+  .wiz-close{ position:fixed; top:20px; right:22px; }
+  .wiz-title{ font-size:26px; font-weight:700; letter-spacing:-.032em; margin-bottom:16px; }
+  .wiz-actions{ display:flex; align-items:center; gap:9px; margin-top:26px;
+    padding-top:20px; border-top:1px solid var(--border); }
+  .wiz-need{ font-size:12.5px; color:var(--dim); margin-top:9px; }
+  .wiz-warn{ display:flex; align-items:flex-start; gap:9px; margin-top:16px; padding:12px 14px;
+    border:1px solid rgba(210,96,76,.3); border-radius:var(--r-md);
+    background:rgba(210,96,76,.07); font-size:13px; color:var(--muted); line-height:1.65; }
+  .wiz-warn .ic{ width:15px; height:15px; color:var(--danger); margin-top:1px; }
+  /* NOT uppercase. Ukrainian "Крок 2 з 5" uppercases to "КРОК 2 З 5", and a Cyrillic З at 9.5px
+     with .18em tracking is indistinguishable from the digit 3 — the owner read it as
+     the digit 3. Any caps label carrying a Cyrillic preposition has this problem. */
+  .wiz-step{ font-size:12px; letter-spacing:.04em; color:var(--dim);
+    font-weight:600; margin-bottom:10px; }
+  .wiz-text{ font-size:14.5px; line-height:1.75; color:var(--muted); margin-bottom:20px; }
+  .guide-acts{ display:flex; gap:9px; flex-wrap:wrap; }
+  /* Reduced motion means fewer and gentler animations, NOT zero — killing every
+     transition took the colour and opacity feedback with it. */
+  @media (prefers-reduced-motion: reduce){
+    *{ transition-duration:.01ms !important; }
+    .nav-item:active,.btn-primary:active,.btn-ghost:active,.btn-save:active,
+    .keep:active,.act:active{ transform:none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="mk" id="brand-icon"></span>Info Parser</div>
+    <button class="nav-item active" data-view="feed" id="nav-feed"></button>
+    <button class="nav-item" data-view="profiles" id="nav-profiles"></button>
+    <button class="nav-item" data-view="prompts" id="nav-prompts"></button>
+    <button class="nav-item" data-view="tracked" id="nav-tracked"></button>
+    <button class="nav-item" data-view="banned" id="nav-banned"></button>
+    <button class="nav-item" data-view="settings" id="nav-settings"></button>
+  </aside>
+
+  <main class="content">
+    <!-- FEED -->
+    <section id="view-feed" class="view">
+      <h1 class="view-title" data-i18n="feed.title"></h1>
+      <p class="view-sub" data-i18n="feed.sub"></p>
+      <div class="profile-box">
+        <div class="box-label" data-i18n="feed.box_label"></div>
+        <div id="profile-checks" class="src-picker"></div>
+        <div class="profile-row">
+          <span class="spacer"></span>
+          <button class="btn-primary" id="run-btn"></button>
+          <button class="btn-ghost danger" id="stop-btn" hidden></button>
+          <button class="btn-ghost" id="md-btn"></button>
+          <button class="btn-ghost" id="clear-btn"></button>
+          <span class="status" id="status"></span>
+        </div>
+      </div>
+      <div id="results"></div>
+    </section>
+
+    <!-- PROFILES -->
+    <section id="view-profiles" class="view" hidden>
+      <h1 class="view-title" data-i18n="profiles.title"></h1>
+      <p class="view-sub" data-i18n="profiles.sub"></p>
+      <div class="profiles-layout">
+        <div class="profile-list">
+          <div class="box-label" data-i18n="profiles.box_label"></div>
+          <div id="plist"></div>
+        </div>
+        <div class="editor" id="editor"></div>
+      </div>
+    </section>
+
+    <!-- PROMPTS -->
+    <section id="view-prompts" class="view" hidden>
+      <h1 class="view-title" data-i18n="prompts.title"></h1>
+      <p class="view-sub" data-i18n="prompts.sub"></p>
+      <div class="profiles-layout">
+        <!-- TWO groups: your profiles, and the shared machinery. `_meta` is in
+             neither — it had a heading of its own for a day, and a whole section for
+             a file you already reach from the guide was pointless. It is copy-only,
+             handed over by the guide's button. -->
+        <div class="profile-list">
+          <div class="box-label" data-i18n="prompts.box_profiles"></div>
+          <div id="prompt-list-own"></div>
+          <div class="box-label shared" data-i18n="prompts.box_shared"></div>
+          <div id="prompt-list-shared"></div>
+        </div>
+        <div class="editor" id="prompt-editor"></div>
+      </div>
+    </section>
+
+    <!-- TRACKED -->
+    <section id="view-tracked" class="view" hidden>
+      <h1 class="view-title" data-i18n="tracked.title"></h1>
+      <p class="view-sub" data-i18n="tracked.sub"></p>
+      <div id="tracked-body"></div>
+    </section>
+
+    <!-- BANNED -->
+    <section id="view-banned" class="view" hidden>
+      <h1 class="view-title" data-i18n="banned.title"></h1>
+      <p class="view-sub" data-i18n="banned.sub"></p>
+      <div id="banned-body"></div>
+    </section>
+    <!-- SETTINGS -->
+    <section id="view-settings" class="view" hidden>
+      <h1 class="view-title" data-i18n="settings.title"></h1>
+      <p class="view-sub" data-i18n="settings.sub"></p>
+      <div id="settings-body"></div>
+    </section>
+  </main>
+</div>
+
+<div id="wizard" class="wiz-screen" hidden>
+  <button class="icon-btn wiz-close" id="wiz-close" title=""></button>
+  <div class="wiz-inner">
+    <div class="wiz-step" id="wiz-step"></div>
+    <div class="wiz-title" id="wiz-title"></div>
+    <div id="wiz-body"></div>
+    <div class="wiz-actions">
+      <button class="btn-ghost" id="wiz-back"></button>
+      <span class="spacer"></span>
+      <button class="btn-ghost" id="wiz-skip"></button>
+      <button class="btn-primary" id="wiz-next"></button>
+    </div>
+  </div>
+</div>
+<!-- Wipe dialog. Per-part checkboxes rather than one all-or-nothing button: the
+     watchlist is months of star measurements, and clearing shown topics before a
+     verify run is a different job from throwing out the ban list. -->
+<div id="wipe-modal" class="modal-overlay" hidden>
+  <div class="modal wipe-modal">
+    <div class="modal-title" id="wipe-title"></div>
+    <div class="modal-label" id="wipe-sub"></div>
+    <div id="wipe-parts"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" id="wipe-cancel"></button>
+      <button class="btn-ghost danger" id="wipe-go"></button>
+    </div>
+  </div>
+</div>
+
+<!-- Prompt editor. A modal you open on purpose: the text on the page behind it is a
+     read-only preview, so no keystroke can reach the file by accident. -->
+<div id="prompt-modal" class="modal-overlay pe-overlay" hidden>
+  <div class="pe-modal">
+    <div class="pe-head">
+      <span class="pe-name" id="pe-name"></span>
+      <span class="spacer"></span>
+      <button class="icon-btn" id="pe-close" type="button"></button>
+    </div>
+    <textarea class="pe-area" id="pe-area" spellcheck="false"></textarea>
+    <div class="pe-foot">
+      <button class="btn-save" id="pe-save"></button>
+      <button class="btn-ghost" id="pe-cancel"></button>
+      <span class="spacer"></span>
+      <button class="btn-ghost" id="pe-restore" hidden></button>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<div id="list-modal" class="modal-overlay" hidden>
+  <div class="modal">
+    <div class="modal-title" data-i18n="listmodal.title"></div>
+    <div class="modal-label" data-i18n="listmodal.id_label"></div>
+    <div class="modal-id mono" id="lm-id"></div>
+    <div class="modal-label"><span data-i18n="listmodal.name_label"></span> <span class="modal-opt" data-i18n="listmodal.optional"></span></div>
+    <input type="text" id="lm-name" class="lm-name" data-i18n-ph="listmodal.name_ph">
+    <div class="modal-actions">
+      <button class="btn-ghost" id="lm-cancel" data-i18n="btn.cancel"></button>
+      <button class="btn-primary" id="lm-save" data-i18n="btn.save"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ICONS = {
+  external:'<path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M18 14v5H5V6h5"/>',
+  rss:'<path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1" fill="currentColor" stroke="none"/>',
+  settings:'<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
+  star:'<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+  github:'<path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/>',
+  twitter:'<path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/>',
+  play:'<polygon points="6 3 20 12 6 21 6 3"/>',
+  download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  x:'<path d="M18 6 6 18M6 6l12 12"/>',
+  trending:'<path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/>',
+  trash:'<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  copy:'<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  // the Feed is topic IDEAS, not a news stream, and the rss wave it used to wear was
+  // also the feeds source's icon, so the tab and one of its three sources matched
+  lightbulb:'<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>',
+  newspaper:'<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/>',
+  atSign:'<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/>',
+  list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+  edit:'<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  chevron:'<path d="m6 9 6 6 6-6"/>',
+  flame:'<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+  alert:'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  file: `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>`,
+  ban:'<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+  lock:'<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  help:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+  undo:'<path d="M3 7v6h6"/><path d="M3.51 13a9 9 0 1 0 2.13-9.36L3 7"/>',
+};
+// The app's own logo, inlined so the UI stays a single file. Cropped and
+// background-stripped by tools/build_icons.py's own framing, so the sidebar mark
+// and the Dock icon are the same artwork. Its own light rounded square is the shape,
+// so it sits on the sidebar with nothing behind it — grey, not the filled green that
+// was rejected.
+const BRAND_MARK = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="316.00 316.00 392.00 392.00"><path fill="#E3E6E8" d="M491.391 333.556L491.382 333.556C476.175 333.463 460.966 333.37 445.857 333.722C413.853 335.081 386.419 345.333 364.354 369.393C351.492 383.339 342.584 400.465 338.549 419.003C335.747 431.298 335.842 444.106 335.936 456.773C335.953 459.03 335.97 461.282 335.97 463.526L336.008 508.306L336.011 556.667C336.009 559.002 335.994 561.409 335.979 563.851L335.979 563.866L335.979 563.869C335.933 571.236 335.885 578.919 336.195 585.902C337.226 615.374 350.095 643.186 371.892 663.048C401.345 689.711 434.462 689.315 470.063 688.889C474.462 688.837 478.899 688.784 483.372 688.781L577.865 688.629C630.4 687.953 672.749 657.735 684.939 605.557C688.312 591.127 688.173 577.676 688.026 563.419L688.026 563.415L688.026 563.393C687.998 560.679 687.969 557.937 687.965 555.153C687.909 520.742 687.913 486.393 687.917 451.991L687.917 451.295L687.918 445.131C687.924 392.341 656.77 347.842 604.408 336.331C589.9 333.163 575.356 333.333 560.719 333.504L560.717 333.504L560.697 333.504C554.906 333.572 549.1 333.64 543.276 333.502C539.056 333.401 534.697 333.45 530.484 333.515C517.498 333.717 504.446 333.637 491.391 333.556Z"/><path fill="#08090A" d="M525.359 396.379C508.151 401.425 492.316 410.317 479.05 422.382C478.395 418.352 475.013 394.257 474.188 391.759C473.028 391.372 472.811 391.413 471.896 391.586C471.722 391.618 471.524 391.656 471.289 391.696C451.692 394.085 432.11 396.589 412.544 399.208C402.571 400.477 390.815 401.603 381.128 403.19C384.252 446.038 392.575 502.394 422.525 535.438C408.916 558.028 395.772 580.894 383.102 604.023C411.524 618.346 439.573 633.544 467.985 647.764C484.206 621.842 500.136 595.74 515.773 569.461C524.298 580.487 532.563 591.711 540.561 603.124C549.426 615.653 558.564 629.418 567.606 641.612C575.459 636.942 584.426 632.577 592.555 628.144C610.627 618.175 628.842 608.47 647.196 599.031C640.599 582.401 629.987 563.531 621.23 548.037C616.036 538.846 610.263 527.45 604.748 518.714C622.604 479.972 629.185 453.187 634.653 410.151C601.697 392.23 561.686 385.514 525.359 396.379Z"/><path fill="#E3E6E8" d="M448.226 426.253L447.458 425.727C437.902 426.966 424.393 428.278 415.222 429.969C421.528 461.656 428.799 499.053 451.541 522.7C454.83 526.12 459.325 530.674 463.262 533.323C452.032 550.952 438.054 572.863 427.862 590.934C436.168 595.542 447.116 600.118 455.887 604.329L480.163 565.716C483.653 560.223 490.144 550.85 493.003 545.417C509.994 547.092 519.642 546.004 535.893 540.737C541.659 548.057 546.315 554.887 551.783 562.231C560.8 574.951 570.382 587.723 579.178 600.491C587.36 595.943 596.066 591.009 604.332 586.671C601.637 581.204 598.627 575.863 595.631 570.553C586.148 553.739 577.087 536.391 565.781 520.706C574.027 511.054 578.184 505.948 583.813 494.462C576.476 491.203 558.682 490.423 550.596 490.504C534.107 514.614 501.61 519.758 477.609 503.775C468.99 498.035 467.13 491.349 463.656 482.189C456.853 464.49 451.758 446.181 448.441 427.512C448.366 427.093 448.294 426.674 448.226 426.253Z"/><path fill="#037F4F" d="M598.546 429.72C586.546 426.833 572.542 424.789 560.246 425.224C531.882 426.786 515.671 431.989 495.161 453.653C494.058 454.819 492.338 456.975 491.41 458.279C493.706 464.334 496.194 472.251 499.257 477.745C504.336 479.076 506.155 479.067 511.316 478.658C514.663 476.669 518.951 470.981 523.944 467.401C544.253 454.889 569.985 455.205 592.16 462.327C594.793 451.244 596.251 440.6 598.546 429.72Z"/></svg>';
+const FIELD_ICON = { 'x.accounts':'atSign', 'x.lists':'list', 'x.searches':'search',
+                     'github.topics':'github', 'feeds.urls':'newspaper' };
+function svg(name, cls){ return `<svg class="ic ${cls||''}" viewBox="0 0 24 24">${ICONS[name]||''}</svg>`; }
+const api = () => window.pywebview.api;
+const $ = (s, r=document) => r.querySelector(s);
+// A link reaching a card came off a scraped page. esc() makes it safe as TEXT but
+// leaves the scheme alone, so `javascript:` survives into href and one click runs
+// script with the whole window.pywebview.api in reach. http/https only.
+let STRINGS = {}, LANG = 'en';
+// Strings come from Python's OWN catalogue (Api.get_strings) rather than a copy kept
+// here — one source, so a translated build cannot half-translate.
+function tr(key, vars){
+  const v = STRINGS[key];
+  if(typeof v !== 'string') return key;
+  if(!vars) return v;
+  let out = v;
+  for(const k in vars) out = out.split('{'+k+'}').join(vars[k]);
+  return out;
+}
+// Static markup carries data-i18n / data-i18n-ph and is filled once the catalogue has
+// arrived. init() awaits it before anything renders, so there is no flash of keys.
+function applyStaticStrings(){
+  document.documentElement.setAttribute('lang', LANG);
+  document.querySelectorAll('[data-i18n]').forEach(el =>
+    el.textContent = tr(el.getAttribute('data-i18n')));
+  document.querySelectorAll('[data-i18n-ph]').forEach(el =>
+    el.setAttribute('placeholder', tr(el.getAttribute('data-i18n-ph'))));
+}
+function emptyState(icon, titleKey, bodyKey){
+  return `<div class="empty">${svg(icon)}
+    <div class="empty-title">${esc(tr(titleKey))}</div>
+    <div class="empty-body">${esc(tr(bodyKey))}</div></div>`;
+}
+function safeUrl(u){ const v = String(u == null ? '' : u).trim();
+  return /^https?:\/\//i.test(v) ? v : '#'; }
+
+/* ---- toast ---- */
+let toastT;
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'), 2200); }
+
+/* ---- nav ---- */
+/* scroll offset per view, so switching away and back lands where you left off.
+   .content is the scroll container (the page body never scrolls — .app is
+   height:100vh/overflow:hidden). Restore happens after the view's render call,
+   on the next frame, because renderers replace the innerHTML: setting scrollTop
+   before the new content exists would just clamp to 0. */
+const VIEW_SCROLL = {};
+let CURRENT_VIEW = 'feed';
+// Leaving a view re-reads it from disk, so anything typed and not saved is gone
+// without a word. One registry rather than an `if` per screen: Profiles had the check
+// and Settings did not, so a typed API key and a changed tuning knob both vanished on
+// a nav click. A screen added later has to opt in HERE, which is easier to notice than
+// a missing branch inside showView.
+const VIEW_DIRTY = {
+  profiles: { dirty: () => profilesDirty(),  ask: 'profiles.confirm_discard' },
+  settings: { dirty: () => settingsDirty(),  ask: 'settings.confirm_discard' },
+};
+function showView(name){
+  const guard = VIEW_DIRTY[CURRENT_VIEW];
+  if(guard && name !== CURRENT_VIEW && guard.dirty() && !confirm(tr(guard.ask))) return;
+  const box = $('.content');
+  if(box) VIEW_SCROLL[CURRENT_VIEW] = box.scrollTop;
+  CURRENT_VIEW = name;
+  document.querySelectorAll('.view').forEach(v => v.hidden = (v.id !== 'view-'+name));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view===name));
+  if(name==='feed') renderSourcePicker();
+  if(name==='profiles') renderProfiles();
+  if(name==='prompts') renderPrompts();
+  if(name==='tracked') renderTracked();
+  if(name==='banned') renderBanned();
+  if(name==='settings') renderSettings();
+  const y = VIEW_SCROLL[name] || 0;
+  requestAnimationFrame(()=>{ const b = $('.content'); if(b) b.scrollTop = y; });
+}
+
+/* ---- feed ---- */
+const SRC_KINDS = [
+  { kind:'accounts', key:'kind.accounts', icon:'atSign' },
+  { kind:'lists',    key:'kind.lists',    icon:'list'   },
+  { kind:'searches', key:'kind.searches', icon:'search' },
+  { kind:'topics',   key:'kind.topics',   icon:'github' },
+  { kind:'feeds',    key:'kind.feeds',    icon:'newspaper' },
+];
+// sticky picker: keys the user turned OFF survive view switches (default = all on)
+let GH_TOPICS = new Set();     // the owner's own GitHub topics, filled by renderSourcePicker
+const PICKER_OFF = new Set(JSON.parse(localStorage.getItem('pickerOff') || '[]'));
+// how many sources each profile actually HAS (not how many are ticked) — a profile
+// with none of them cannot produce anything, and the run says so instead of silently
+// skipping it. Filled by renderSourcePicker.
+let PICKER_TOTALS = {};
+// Groups start COLLAPSED — the feed opens on a short list of profiles with their counts,
+// not on a wall of every account and tag. `null` (never touched) means "collapse them all",
+// which is why this cannot just default to an empty set.
+const PICKER_COLLAPSED = new Set(JSON.parse(localStorage.getItem('pickerCollapsed') || 'null') || []);
+const PICKER_COLLAPSE_SEEN = localStorage.getItem('pickerCollapsed') !== null;
+const FEED_COLLAPSED = new Set(JSON.parse(localStorage.getItem('feedCollapsed') || '[]'));
+function saveFeedCollapsed(){ localStorage.setItem('feedCollapsed', JSON.stringify([...FEED_COLLAPSED])); }
+// The picker remembers what is turned OFF by a key that STARTS with the profile name,
+// so a rename orphaned every one of them: the old rows sat in localStorage forever and
+// the renamed profile came back with every source ticked again.
+function remapPickerKeys(oldName, newName){
+  for(const set of [PICKER_OFF, PICKER_COLLAPSED]){
+    for(const key of [...set]){
+      const parts = key.split('\u0000');
+      if(parts[0] !== oldName) continue;
+      set.delete(key);
+      parts[0] = newName;
+      set.add(parts.join('\u0000'));
+    }
+  }
+  savePickerState();
+}
+function savePickerState(){
+  localStorage.setItem('pickerOff', JSON.stringify([...PICKER_OFF]));
+  localStorage.setItem('pickerCollapsed', JSON.stringify([...PICKER_COLLAPSED]));
+}
+// \u0000 as an escape, not a literal NUL byte: the raw byte made the file read as
+// binary, so grep and every text tool skipped it silently.
+const pickKey = (profile, kind, value) => `${profile}\u0000${kind}\u0000${value}`;
+// A feed URL is stored raw (it is what gets fetched) but SHOWN short: eleven full
+// addresses down the picker are a wall nobody reads, and the part that identifies the
+// source is the host. The scheme, `www.` and the feed file itself (`/rss.xml`,
+// `/feed/`) carry nothing. A YouTube channel keeps its id, because in that URL the id
+// is the channel's only name.
+function feedLabel(url){
+  let s = String(url || '');
+  const yt = s.match(/youtube\.com\/feeds\/videos\.xml\?channel_id=([\w-]+)/i);
+  if(yt) return 'youtube.com/' + yt[1];
+  s = s.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('?')[0];
+  s = s.replace(/\/(rss|feed|atom)(\.xml)?\/?$/i, '').replace(/\/(feed|rss)\.xml$/i, '');
+  return s.replace(/\/+$/, '') || String(url || '');
+}
+async function renderSourcePicker(){
+  const data = await api().get_profiles();
+  const profiles = (data && data.profiles) || data || {};
+  const box = $('#profile-checks');
+  const names = Object.keys(profiles);
+  // X needs a logged-in session. Hiding those sources when it is missing was WRONG: a
+  // profile whose only source is an X account then read as "no sources" and could
+  // never be run, with the message blaming the profile the owner had just filled in.
+  // They stay visible and counted, greyed and unticked, with the reason spelled out.
+  let hasCookies = true;
+  try{ const st = await api().setup_state(); hasCookies = !((st && st.missing) || []).includes('cookies'); }
+  catch(_){ /* on any doubt treat the session as present rather than grey out a working source */ }
+  const kinds = SRC_KINDS;
+  PICKER_TOTALS = {};
+  // remember every GitHub topic the owner searches, so a card can highlight the tags
+  // that are actually his (the rest are the repo's own noise: python, rust, docker)
+  GH_TOPICS = new Set(names.flatMap(n => ((profiles[n]||{}).github||{}).topics || [])
+                           .map(t => String(t).toLowerCase()));
+  if(!names.length){ box.innerHTML = '<span class="status">'+esc(tr('picker.no_profiles'))+'</span>'; return; }
+  box.innerHTML = names.map(name=>{
+    const cfg = profiles[name] || {};
+    const x = cfg.x || {}, gh = cfg.github || {};
+    let total = 0, on = 0;
+    const subs = kinds.map(k=>{
+      const arr = k.kind==='topics' ? (gh.topics||[])
+                : k.kind==='feeds' ? ((cfg.feeds||{}).urls||[])
+                : (x[k.kind]||[]);
+      if(!arr.length) return '';
+      // an X source with no session cannot be scraped, but it still EXISTS and still
+      // counts — it is shown, locked, and told why
+      const locked = !hasCookies && k.kind !== 'topics' && k.kind !== 'feeds';
+      total += arr.length;
+      let kOn = 0;
+      const items = arr.map(v=>{
+        const id = entryKey(v);
+        const itemLabel = (k.kind==='lists' && v && typeof v==='object' && v.name) ? v.name
+                        : k.kind==='feeds' ? feedLabel(id) : id;
+        const checked = !locked && !PICKER_OFF.has(pickKey(name, k.kind, id));
+        if(checked){ on++; kOn++; }
+        return `<label class="src-item ${checked?'':'off'} ${locked?'locked-src':''}">
+          <input type="checkbox" hidden ${checked?'checked':''} ${locked?'disabled':''} data-profile="${esc(name)}" data-kind="${k.kind}" data-value="${esc(id)}">
+          ${esc(itemLabel)}</label>`;
+      }).join('');
+      return `<div class="src-sub" data-subkind="${k.kind}"><span class="cbox ${!locked&&kOn===arr.length?'on':''}">${svg('check')}</span>${esc(tr(k.key))}
+        <span class="kn" data-kind-count>${locked ? esc(tr('picker.needs_x')) : esc(tr('picker.of',{on:kOn,total:arr.length}))}</span></div><div class="src-items">${items}</div>`;
+    }).join('');
+    PICKER_TOTALS[name] = total;
+    const body = total ? subs : '<div class="src-empty">'+esc(tr('picker.no_sources'))+'</div>';
+    const isCollapsed = PICKER_COLLAPSE_SEEN ? PICKER_COLLAPSED.has(name) : true;
+    return `<div class="src-group ${isCollapsed?'collapsed':''}" data-profile="${esc(name)}">
+      <div class="src-head"><span class="cbox ${total&&on===total?'on':''}">${svg('check')}</span>${esc(name)}
+        <span class="n" data-count>${total?esc(tr('picker.of',{on:on,total:total})):'·'}</span>
+        <button class="src-collapse" data-collapse type="button" title="${esc(tr('picker.collapse'))}">${svg('chevron')}</button></div>
+      <div class="src-body">${body}</div></div>`;
+  }).join('');
+}
+// mirror a checkbox's state into PICKER_OFF (off = user unchecked it)
+function recordPick(inp){
+  const key = pickKey(inp.dataset.profile, inp.dataset.kind, inp.dataset.value);
+  if(inp.checked) PICKER_OFF.delete(key); else PICKER_OFF.add(key);
+  savePickerState();
+}
+function updateGroupHead(group){
+  const boxes = [...group.querySelectorAll('.src-item input')];
+  const on = boxes.filter(b=>b.checked).length;
+  const headCbox = group.querySelector('.src-head .cbox');
+  if(headCbox) headCbox.classList.toggle('on', on>0 && on===boxes.length);
+  const cnt = group.querySelector('[data-count]');
+  if(cnt) cnt.textContent = boxes.length ? tr('picker.of',{on:on,total:boxes.length}) : '·';
+}
+// refresh one kind's sub-header (its "N of M" count + toggle-all cbox state)
+function updateSubHead(group, kind){
+  const sub = [...group.querySelectorAll('.src-sub')].find(s=>s.dataset.subkind===kind);
+  if(!sub) return;
+  const boxes = [...group.querySelectorAll(`.src-item input[data-kind="${kind}"]`)];
+  const on = boxes.filter(b=>b.checked).length;
+  sub.querySelector('.cbox').classList.toggle('on', on>0 && on===boxes.length);
+  const cnt = sub.querySelector('[data-kind-count]');
+  if(cnt) cnt.textContent = tr('picker.of',{on:on,total:boxes.length});
+}
+function onPickerClick(e){
+  const coll = e.target.closest('[data-collapse]');
+  if(coll){
+    e.preventDefault(); e.stopPropagation();
+    const group = coll.closest('.src-group');
+    const collapsed = group.classList.toggle('collapsed');
+    if(collapsed) PICKER_COLLAPSED.add(group.dataset.profile); else PICKER_COLLAPSED.delete(group.dataset.profile);
+    savePickerState();
+    return;
+  }
+  const item = e.target.closest('.src-item');
+  if(item){
+    e.preventDefault();
+    const inp = item.querySelector('input');
+    inp.checked = !inp.checked;
+    item.classList.toggle('off', !inp.checked);          // the chip IS the checkbox
+    recordPick(inp);
+    const group = item.closest('.src-group');
+    updateSubHead(group, inp.dataset.kind);
+    updateGroupHead(group);
+    return;
+  }
+  const sub = e.target.closest('.src-sub');       // toggle-all for one kind (accounts/lists/…)
+  if(sub){
+    const group = sub.closest('.src-group');
+    const kind = sub.dataset.subkind;
+    const boxes = [...group.querySelectorAll(`.src-item input[data-kind="${kind}"]`)];
+    if(!boxes.length) return;
+    const next = !boxes.every(b=>b.checked);
+    boxes.forEach(b=>{ b.checked=next; b.closest('.src-item').classList.toggle('off', !next); recordPick(b); });
+    updateSubHead(group, kind);
+    updateGroupHead(group);
+    return;
+  }
+  const head = e.target.closest('.src-head');
+  if(head){
+    const group = head.closest('.src-group');
+    const boxes = [...group.querySelectorAll('.src-item input')];
+    if(!boxes.length) return;
+    const next = !boxes.every(b=>b.checked);       // all on -> off, otherwise all on
+    boxes.forEach(b=>{ b.checked=next; b.closest('.src-item').classList.toggle('off', !next); recordPick(b); });
+    group.querySelectorAll('.src-sub').forEach(s=> updateSubHead(group, s.dataset.subkind));
+    updateGroupHead(group);
+  }
+}
+// A topic CARRIES its source (the ranker reads it off the signal that produced it,
+// the DB stores it). The link sniffing is only the fallback for topics written before
+// that column existed: it cannot tell a lab's blog from any other address, which is
+// why every official-source topic used to land in the catch-all section.
+function sourceOf(topic){
+  const known = (topic.source || '').toLowerCase();
+  if(known === 'tw' || known === 'gh' || known === 'feed' || known === 'other') return known;
+  const l = (topic.links && topic.links[0] || '').toLowerCase();
+  if(l.includes('github.com')) return 'gh';
+  if(l.includes('x.com') || l.includes('twitter.com')) return 'tw';
+  return 'other';
+}
+const SRC = { tw:{icon:'twitter', label:'Twitter'}, gh:{icon:'github', label:'GitHub'},
+              feed:{icon:'newspaper', key:'kind.feeds'}, other:{icon:'external', key:'source.other'} };
+// Feed order, and the same order the .md uses (`export._SOURCE_KEYS`).
+const SRC_ORDER = ['tw', 'gh', 'feed', 'other'];
+// Twitter and GitHub are product names and stay literal; the other two are translated,
+// so they carry a catalogue key. Reading `.label` blindly printed "undefined" on every
+// catch-all card.
+function srcLabel(key){ const s = SRC[key] || {}; return s.label || (s.key ? tr(s.key) : key); }
+
+// coarse run phase PULLED from Python (Api.get_phase, polled below), e.g.
+// "Collecting Twitter...", "Scoring...". Only meaningful while a run is in flight.
+window.setPhase = (text) => { const s = $('#status'); if(s && text) s.textContent = text; };
+// One run = one .md. Before the first run of the session there is nothing to export,
+// so the button stays dead rather than writing a file with a header and no topics.
+// Nothing survives a restart here on purpose: the export scope is the LAST RUN, and
+// Api._last_topic_ids lives in memory only.
+let MD_READY = false;
+// The feed is restored from the database on launch, so clearing the SCREEN has to be
+// remembered or the next launch draws it straight back. It clears the view only: the
+// rows stay, so cross-run dedup still knows what was shown. Deleting them is the
+// Settings wipe, which says so and counts what it removes.
+let FEED_CLEARED = localStorage.getItem('feedCleared') === '1';
+function setFeedCleared(on){
+  FEED_CLEARED = on;
+  localStorage.setItem('feedCleared', on ? '1' : '0');
+}
+function clearFeed(){
+  if(!confirm(tr('confirm.clear_feed'))) return;
+  setFeedCleared(true);
+  MD_READY = false;
+  $('#md-btn').disabled = true;
+  $('#results').innerHTML = '';
+  $('#clear-btn').disabled = true;
+}
+function setRunning(running){
+  $('#run-btn').disabled = running;
+  $('#md-btn').disabled = running || !MD_READY;
+  $('#clear-btn').disabled = running || !$('#results').innerHTML;
+  const stop = $('#stop-btn');
+  stop.hidden = !running;
+  if(running) stop.disabled = false;   // a fresh run -> Stop is clickable again
+  $('#profile-checks').classList.toggle('locked', running);
+}
+async function runParser(){
+  // a profile with no sources at all can only produce an empty run — refuse and name it
+  const empty = Object.keys(PICKER_TOTALS).filter(n => !PICKER_TOTALS[n]);
+  if(empty.length && empty.length === Object.keys(PICKER_TOTALS).length){
+    $('#status').textContent = tr('status.profile_no_sources', {name: empty.join(', ')});
+    return;
+  }
+  const boxes = [...$('#profile-checks').querySelectorAll('.src-item input:checked')];
+  if(!boxes.length){
+    // nothing ticked because every source needs an X session is a different problem
+    // from nothing ticked because you unticked it
+    const locked = $('#profile-checks').querySelectorAll('.src-item.locked-src').length;
+    const free = $('#profile-checks').querySelectorAll('.src-item:not(.locked-src)').length;
+    $('#status').textContent = (locked && !free) ? tr('status.needs_x_session') : tr('status.pick_source');
+    return;
+  }
+  // Keys can be skipped in the guide now, so say what is missing instead of letting the
+  // run spend a scrape and then die on the first scoring call.
+  try{
+    const st = await api().setup_state();
+    const need = ((st && st.missing) || []).filter(m => m !== 'cookies');
+    if(need.length){ $('#status').textContent = tr('status.keys_missing'); return; }
+  }catch(_){ /* if the check itself fails, let the run try */ }
+  // PRESENT is not USABLE. Placeholder text once sat in `.env` for a day: every check
+  // above passed, the guide stayed shut, and the run would have scraped for 15 minutes
+  // before dying on the first scoring call. Two cheap probes, ~1s, once per run.
+  try{
+    $('#status').textContent = tr('status.checking_keys');
+    const chk = await api().check_keys();
+    const dead = (chk && chk.rejected) || [];
+    if(dead.length){
+      const names = dead.map(k => tr(k === 'GITHUB_TOKEN' ? 'settings.github' : 'settings.openai'));
+      $('#status').textContent = tr('status.keys_rejected', {keys: names.join(', ')});
+      return;
+    }
+  }catch(_){ /* the probe itself failing must not block a run the user asked for */ }
+  if(empty.length) toast(tr('status.profile_no_sources', {name: empty.join(', ')}));
+  const selection = {};
+  boxes.forEach(b=>{
+    const { profile, kind, value } = b.dataset;
+    if(!selection[profile]) selection[profile] = { github:{topics:[]}, feeds:{urls:[]},
+                                                   x:{accounts:[],lists:[],searches:[]} };
+    if(kind==='topics') selection[profile].github.topics.push(value);
+    else if(kind==='feeds') selection[profile].feeds.urls.push(value);
+    else selection[profile].x[kind].push(value);
+  });
+  setRunning(true);
+  $('#status').textContent=tr('run.working'); $('#results').innerHTML='';
+  let res;
+  // pull the current coarse phase from Python while the run is in flight
+  // (JS -> Python is pywebview's reliable direction; Python push is not)
+  const phaseTimer = setInterval(async ()=>{
+    try{ const p = await api().get_phase(); if(p) window.setPhase(p); }catch(e){}
+  }, 400);
+  try{ res = await api().run_parser(selection); }
+  catch(e){ res = {error:String(e)}; }
+  finally{ clearInterval(phaseTimer); }
+  setRunning(false);
+  if(res && res.error){ $('#status').textContent=tr('status.error',{error:res.error}); return; }
+  // A stopped run still hands back the profiles that finished — their topics are in
+  // the DB already, so showing an empty feed would hide work the user paid for and
+  // cross-run dedup would bury it next time.
+  renderResults((res&&res.topics)||[], (res&&res.alerts)||[], (res&&res.warnings)||[]);
+  $('#status').textContent = tr(res && res.cancelled ? 'status.stopped' : 'status.done');
+}
+async function stopRun(){
+  if(!confirm(tr('confirm.stop_run'))) return;
+  $('#stop-btn').disabled = true;   // one press per run — the run is winding down
+  $('#status').textContent=tr('status.stopping');
+  await api().stop();
+}
+async function restoreLastRun(){
+  // Draw the LAST RUN's topics straight from the database, so closing the app no
+  // longer empties the screen and kills the .md button while sixty days of topics
+  // sit in `shown_topics` reachable by nothing. Trending is NOT restored: it is a
+  // live measurement off the watchlist, not a stored result, and a stale breakout
+  // would be a lie. Silent on failure — an empty feed is the old behaviour, and a
+  // first launch has nothing to restore anyway.
+  try {
+    if(FEED_CLEARED) return;          // cleared on purpose, do not draw it again
+    const res = await api().get_saved_topics();
+    const topics = (res && res.topics) || [];
+    if(topics.length) renderResults(topics, [], []);
+  } catch(_) {}
+}
+
+function renderResults(topics, alerts, warnings){
+  MD_READY = !!(topics && topics.length);
+  $('#md-btn').disabled = !MD_READY;
+  setFeedCleared(false);              // a new run is what the screen is for
+  $('#clear-btn').disabled = false;
+  let html='';
+  // collector failures — surfaced, not silent
+  if(warnings && warnings.length){
+    html += `<div class="warn-banner">${svg('alert')}<div class="warn-list">${
+      warnings.map(w=>`<div>${esc(w)}</div>`).join('')}</div></div>`;
+  }
+  // trending breakouts — separate channel, above the topics
+  if(alerts && alerts.length){
+    html += `<div class="source-section trend">${svg('flame')}<span class="h">${esc(tr('feed.trending_heading'))}</span>
+      <span class="cnt">${alerts.length}</span><span class="line"></span></div>`;
+    html += alerts.map(alertCard).join('');
+  }
+  // topic cards grouped by source
+  const groups = { tw:[], gh:[], feed:[], other:[] };
+  topics.forEach(t => groups[sourceOf(t)].push(t));
+  for(const key of SRC_ORDER){
+    const list = groups[key]; if(!list.length) continue;
+    const s = SRC[key];
+    const collapsed = FEED_COLLAPSED.has(key);
+    html += `<div class="feed-section ${collapsed?'collapsed':''}" data-src="${key}">
+      <div class="source-section ${key}" data-sec-toggle role="button" title="${esc(tr('picker.toggle_section'))}">${svg(s.icon)}<span class="h">${esc(srcLabel(key))}</span>
+        <span class="cnt">${list.length} ${plural(list.length)}</span><span class="line"></span>
+        <button class="sec-collapse" type="button" tabindex="-1">${svg('chevron')}</button></div>
+      <div class="section-body">${list.map(t => cardHtml(t, key)).join('')}</div></div>`;
+  }
+  if(!topics.length && !(alerts&&alerts.length))
+    html += emptyState('lightbulb', 'feed.empty', 'feed.empty_body');
+  $('#results').innerHTML = html;
+}
+function alertCard(a){
+  const vel = a.velocity!=null ? '+'+Math.round(a.velocity)+' '+tr('unit.stars_per_day') : '';
+  const stars = a.stars!=null ? fmtNum(a.stars)+' ★' : '';
+  // A breakout repo is a post idea like any other and it leads the .md, so it gets
+  // the same three actions a GitHub card has. It had none: copying meant selecting
+  // the text by hand and banning meant hunting the repo down on the Tracked screen.
+  const url = safeUrl(a.url);
+  return `<div class="trend-card" data-repo="${esc(a.repo)}">
+    <div class="trend-ic">${svg('flame')}</div>
+    <div class="trend-body">
+      <a class="trend-repo" href="${esc(url)}" target="_blank" rel="noopener">${esc(a.repo)}</a>
+      <div class="trend-desc">${esc(a.description||'')}</div>
+      <div class="card-actions">
+        <button class="act" data-act="copy">${svg('copy')}${esc(tr('card.copy'))}</button>
+        <button class="act open" data-act="open" data-url="${esc(url)}" title="${esc(url)}">${svg('external')}${esc(tr('card.open'))}</button>
+        <button class="act ban" data-act="ban" data-url="${esc(url)}" title="${esc(tr('card.ban_title'))}">${svg('ban')}${esc(tr('card.ban'))}</button>
+      </div>
+    </div>
+    <div class="trend-metric"><span class="trend-vel">${vel}</span><span class="trend-stars mono">${stars}</span></div>
+  </div>`;
+}
+function cardMeta(t){
+  // GitHub repo facts for the feed card: stars + created + last-modified.
+  // Each piece is optional (a tweet-only cluster has none) -> render what exists.
+  const bits=[];
+  if(t.stars!=null) bits.push(`<span class="cm-stars mono">${svg('star')}${fmtNum(t.stars)}</span>`);
+  if(t.created) bits.push(`<span>${esc(tr('card.created',{date:fmtDate(t.created)}))}</span>`);
+  if(t.updated) bits.push(`<span>${esc(tr('card.updated',{date:fmtDate(t.updated)}))}</span>`);
+  return bits.length ? `<div class="card-meta">${bits.join('<span class="cm-dot">·</span>')}</div>` : '';
+}
+const TAGS_ON_CARD = 4;
+function cardTags(t){
+  // The repo's own GitHub tags — what the thing IS, at a glance. The collector already
+  // ordered the owner's own topics first, so slicing keeps the useful ones.
+  const tags = (t.topics || []).slice(0, TAGS_ON_CARD);
+  if(!tags.length) return '';
+  return `<div class="card-tags">` + tags.map(tag =>
+    `<span class="tag${GH_TOPICS.has(String(tag).toLowerCase()) ? ' hit' : ''}">${esc(tag)}</span>`
+  ).join('') + `</div>`;
+}
+function cardHtml(t, srcKey){
+  const url = (t.links||[])[0] || '';
+  // The facts (stars, dates, tags) sit in a band at the BOTTOM. They used to hang off
+  // the top-right, which squeezed the title into a narrow column and left a gap under
+  // the badge on every GitHub card.
+  const facts = srcKey==='gh' ? cardMeta(t) + cardTags(t) : '';
+  return `<div class="topic-card" data-id="${t.id}">
+    <button class="keep on" data-act="keep" title="${esc(tr('card.keep_title'))}">${svg('check')}</button>
+    <div class="card-body">
+      <div class="card-top">
+        <span class="badge ${srcKey}">${svg(SRC[srcKey].icon)}${esc(srcLabel(srcKey))}</span>
+        <div class="card-top-right"><span class="score mono">${t.score}</span></div>
+      </div>
+      <div class="card-title">${esc(t.title)}</div>
+      <div class="card-why">${esc(t.why||'')}</div>
+      ${facts ? `<div class="card-foot">${facts}</div>` : ''}
+      <div class="card-actions">
+        <button class="act" data-act="copy">${svg('copy')}${esc(tr('card.copy'))}</button>
+        ${url ? `<button class="act open" data-act="open" data-url="${esc(url)}" title="${esc(url)}">${svg('external')}${esc(tr('card.open'))}</button>` : ''}
+        ${srcKey==='gh' ? `<button class="act ban" data-act="ban" data-url="${esc(url)}" title="${esc(tr('card.ban_title'))}">${svg('ban')}${esc(tr('card.ban'))}</button>` : ''}
+      </div>
+    </div></div>`;
+}
+async function onResultsClick(e){
+  const sec = e.target.closest('[data-sec-toggle]');
+  if(sec){
+    const wrap = sec.closest('.feed-section');
+    const collapsed = wrap.classList.toggle('collapsed');
+    if(collapsed) FEED_COLLAPSED.add(wrap.dataset.src); else FEED_COLLAPSED.delete(wrap.dataset.src);
+    saveFeedCollapsed();
+    return;
+  }
+  const btn = e.target.closest('[data-act]'); if(!btn) return;
+  if(btn.closest('.trend-card')) return onTrendAction(btn);
+  const card = btn.closest('.topic-card'); const id = +card.dataset.id;
+  const act = btn.dataset.act;
+  if(act==='keep'){
+    const on = btn.classList.toggle('on');
+    await api().set_kept(id, on);
+    toast(on ? tr('toast.kept') : tr('toast.unkept'));
+  } else if(act==='copy'){
+    // ONLY the text that goes into ChatGPT — the topic and what it is. The raw URLs
+    // used to ride along and had to be deleted by hand every time; the link now has
+    // its own button.
+    const title = card.querySelector('.card-title').textContent;
+    const why = card.querySelector('.card-why').textContent;
+    try{ await navigator.clipboard.writeText((title+'\n'+why).trim()); toast(tr('toast.copied')); }
+    catch(_){ toast(tr('toast.copy_failed')); }
+  } else if(act==='open'){
+    await api().open_url(btn.dataset.url);
+  } else if(act==='ban'){
+    const url = btn.dataset.url;
+    if(!confirm(tr('confirm.ban_repo'))) return;
+    await api().ban_repo(url);
+    const section = card.closest('.feed-section');
+    card.remove();
+    refreshSectionCount(section);   // keep the "N topics" header in sync; drop an emptied section
+    refreshBannedCount();
+    toast(tr('toast.banned'));
+  }
+}
+// Trending cards are not topics — no DB row, no keep flag — so they take the same
+// three actions by their own path: copy the repo and its description, open it, ban it.
+async function onTrendAction(btn){
+  const card = btn.closest('.trend-card');
+  const act = btn.dataset.act;
+  if(act==='copy'){
+    const repo = card.querySelector('.trend-repo').textContent;
+    const desc = card.querySelector('.trend-desc').textContent;
+    try{ await navigator.clipboard.writeText((repo+'\n'+desc).trim()); toast(tr('toast.copied')); }
+    catch(_){ toast(tr('toast.copy_failed')); }
+  } else if(act==='open'){
+    await api().open_url(btn.dataset.url);
+  } else if(act==='ban'){
+    if(!confirm(tr('confirm.ban_repo'))) return;
+    await api().ban_repo(card.dataset.repo);
+    card.remove();
+    refreshTrendCount();
+    refreshBannedCount();
+    toast(tr('toast.banned'));
+  }
+}
+// the trending block is not a `.feed-section`, so it needs its own count fix-up
+function refreshTrendCount(){
+  const head = $('.source-section.trend');
+  if(!head) return;
+  const n = document.querySelectorAll('#results .trend-card').length;
+  if(!n){ head.remove(); return; }
+  const cnt = head.querySelector('.cnt');
+  if(cnt) cnt.textContent = n;
+}
+// after a card is removed (ban), recompute its section's "N topics" count, or drop
+// the whole section if it now has no cards left.
+function refreshSectionCount(section){
+  if(!section) return;
+  const n = section.querySelectorAll('.topic-card').length;
+  if(!n){ section.remove(); return; }
+  const cnt = section.querySelector('.source-section .cnt');
+  if(cnt) cnt.textContent = n + ' ' + plural(n);
+}
+async function saveMd(){
+  const res = await api().save_md();
+  if(res && res.ok) toast(tr('toast.saved_to',{path:res.path}));
+  else if(res && res.empty) toast(tr('toast.md_empty'));
+  else toast(tr('toast.cancelled'));
+}
+
+/* ---- profiles ---- */
+let PROFILES = {};      // working copy { name: {github:{topics}, x:{accounts,lists,searches}} }
+let SELECTED = null;
+
+// What is on disk, so an unsaved edit can be noticed before it is thrown away.
+let PROFILES_SAVED = '{}';
+function markProfilesSaved(){ PROFILES_SAVED = JSON.stringify(PROFILES); }
+function profilesDirty(){ return JSON.stringify(PROFILES) !== PROFILES_SAVED; }
+
+async function renderProfiles(){
+  const data = await api().get_profiles();
+  PROFILES = (data && data.profiles) ? JSON.parse(JSON.stringify(data.profiles)) : {};
+  // Fill the missing structures HERE, before the snapshot. The editor defaults them
+  // too, and doing it after the snapshot would make an untouched profile look edited.
+  Object.values(PROFILES).forEach(normaliseProfile);
+  markProfilesSaved();
+  const names = Object.keys(PROFILES);
+  if(!SELECTED || !PROFILES[SELECTED]) SELECTED = names[0] || null;
+  renderProfileList(); renderEditor();
+}
+function profileCount(cfg){
+  const g = cfg.github||{}, x = cfg.x||{};
+  return (g.topics||[]).length + ((cfg.feeds||{}).urls||[]).length +
+         (x.accounts||[]).length + (x.lists||[]).length + (x.searches||[]).length;
+}
+// Rename and delete live behind an explicit Edit mode. They used to sit on every row
+// all the time, one slip away from throwing a profile out.
+let PROFILES_EDIT = false;
+function renderProfileList(){
+  const rows = Object.keys(PROFILES).map(n =>
+    `<div class="prow">
+       <button class="plist-item ${n===SELECTED?'active':''}" data-name="${esc(n)}">
+         ${esc(n)}<span class="n">${profileCount(PROFILES[n])}</span></button>
+       ${PROFILES_EDIT ? `
+       <button class="icon-btn prow-btn" data-rename="${esc(n)}" title="${esc(tr('profiles.rename'))}">${svg('edit')}</button>
+       <button class="icon-btn prow-btn danger" data-delete="${esc(n)}" title="${esc(tr('profiles.delete'))}">${svg('trash')}</button>` : ''}
+     </div>`).join('')
+    || '<div class="src-empty">'+esc(tr('profiles.none_yet'))+'</div>';
+  $('#plist').innerHTML = rows +
+    `<div class="plist-actions">
+       <button class="btn-ghost" id="add-profile">${svg('plus')}${esc(tr('profiles.add'))}</button>
+       <button class="btn-ghost ${PROFILES_EDIT?'on':''}" id="edit-profiles">${svg('edit')}${
+         esc(PROFILES_EDIT ? tr('profiles.edit_done') : tr('profiles.edit_mode'))}</button>
+     </div>`;
+}
+
+// A profile is a yaml entry AND a prompt file; the Api moves both, so the UI only
+// has to re-render. Every path re-reads from Python rather than patching PROFILES,
+// so a refused write can never leave the screen showing something that is not saved.
+function toggleProfilesEdit(){ PROFILES_EDIT = !PROFILES_EDIT; renderProfileList(); }
+async function onProfileAdd(){
+  const name = (prompt(tr('profiles.add_title'), '') || '').trim();
+  if(!name) return;
+  const res = await api().add_profile(name);
+  if(res && res.errors) return toast(res.errors[0]);
+  SELECTED = name;
+  toast(tr('profiles.added'));
+  renderProfiles();
+}
+async function onProfileRename(old){
+  const name = (prompt(tr('profiles.rename_title'), old) || '').trim();
+  if(!name || name === old) return;
+  const res = await api().rename_profile(old, name);
+  if(res && res.errors) return toast(res.errors[0]);
+  if(SELECTED === old) SELECTED = name;
+  remapPickerKeys(old, name);
+  toast(tr('profiles.renamed'));
+  renderProfiles();
+}
+async function onProfileDelete(name){
+  if(!confirm(tr('profiles.confirm_delete', {name:name}))) return;
+  const res = await api().delete_profile(name);
+  if(res && res.errors) return toast(res.errors[0]);
+  if(SELECTED === name) SELECTED = null;
+  toast(tr('profiles.deleted'));
+  renderProfiles();
+}
+function renderEditor(){
+  const ed = $('#editor');
+  if(!SELECTED){ ed.innerHTML='<div class="empty">'+esc(tr('profiles.pick_left'))+'</div>'; return; }
+  const cfg = PROFILES[SELECTED];
+  // EVERY profile shows the same form. It used to render a block only when the yaml
+  // already had that key, so a profile with no `github:` entry simply had no GitHub
+  // section and there was no way to add one from the UI. Which sources a profile uses
+  // is the owner's choice, made by filling the fields in — not by which keys the file
+  // happens to carry.
+  normaliseProfile(cfg);
+  const blocks = `
+    <div class="block gh">
+      <div class="block-title">${svg('github')} GitHub</div>
+      ${fieldHtml('github','topics',tr('field.topics_label'),tr('field.topics_help'))}
+    </div>
+    <div class="block tw">
+      <div class="block-title">${svg('twitter')} Twitter / X</div>
+      ${fieldHtml('x','accounts',tr('kind.accounts'),tr('field.accounts_help'))}
+      ${fieldHtml('x','lists',tr('kind.lists'),tr('field.lists_help'))}
+      ${fieldHtml('x','searches',tr('kind.searches'),tr('field.searches_help'))}
+    </div>
+    <div class="block feed">
+      <div class="block-title">${svg('newspaper')} ${esc(tr('kind.feeds'))}</div>
+      ${fieldHtml('feeds','urls',tr('field.feeds_label'),tr('field.feeds_help'))}
+    </div>`;
+  ed.innerHTML = `
+    <div class="editor-head"><div class="editor-title">${esc(SELECTED)}</div></div>
+    ${blocks}
+    <div class="editor-foot">
+      <button class="btn-save" id="save-profiles">${esc(tr('btn.save'))}</button>
+      <span class="save-msg" id="save-msg"></span>
+    </div>`;
+}
+function normaliseProfile(cfg){
+  cfg.github = cfg.github || {};
+  cfg.github.topics = cfg.github.topics || [];
+  cfg.feeds = cfg.feeds || {};
+  cfg.feeds.urls = cfg.feeds.urls || [];
+  cfg.x = cfg.x || {};
+  cfg.x.accounts = cfg.x.accounts || []; cfg.x.lists = cfg.x.lists || []; cfg.x.searches = cfg.x.searches || [];
+  return cfg;
+}
+function entryKey(v){ return (v && typeof v==='object') ? v.id : v; }
+// Two worked examples per category. They live INSIDE the input's placeholder — as a
+// separate line under the help text they read as clutter and were pulled.
+function fieldExamples(field){
+  if(field==='urls') field = 'feeds';
+  const eg = tr('field.'+field+'_eg');
+  if(!eg || eg === 'field.'+field+'_eg') return '';
+  return eg.split('|').map(v=>v.trim()).join(', ');
+}
+function fieldHtml(group, field, label, help){
+  const arr = (PROFILES[SELECTED][group] && PROFILES[SELECTED][group][field]) || [];
+  const icon = FIELD_ICON[group+'.'+field];
+  // lists get an inline name field per row, so you can name existing lists too
+  if(group==='x' && field==='lists'){
+    const chips = arr.map((v,i)=>{
+      const id = entryKey(v);
+      const nm = (v && typeof v==='object') ? (v.name||'') : '';
+      const chipLabel = nm || id;                              // chip shows the name, not the raw id
+      const idTag = nm ? '…'+String(id).slice(-5) : '';
+      return `<span class="chip" title="ID ${esc(id)}">${svg(icon,'chip-ic')}<span class="chip-label">${esc(chipLabel)}</span><span class="chip-id mono">${esc(idTag)}</span>
+        <button class="chip-edit" data-edit-list="${i}" title="${esc(tr('chip.rename_title'))}">${svg('edit')}</button>
+        <button class="chip-x" data-rm data-group="x" data-field="lists" data-i="${i}">${svg('x')}</button></span>`;
+    }).join('');
+    return `<div class="field">
+      <div class="field-label">${label}</div>
+      <div class="field-help">${help}</div>
+      <div class="tags">${chips}
+        <input type="text" class="chip-input" placeholder="${esc(tr('chip.add_list_ph') + '   ' + fieldExamples('lists'))}" data-add data-group="x" data-field="lists">
+      </div></div>`;
+  }
+  const chips = arr.map((v,i)=>{
+    const raw = entryKey(v);
+    const shown = field==='urls' ? feedLabel(raw) : raw;
+    return `<span class="chip" title="${esc(raw)}">${icon?svg(icon,'chip-ic'):''}<span class="chip-label">${esc(shown)}</span><button class="chip-x" data-rm data-group="${group}" data-field="${field}" data-i="${i}">${svg('x')}</button></span>`;
+  }).join('');
+  return `<div class="field">
+    <div class="field-label">${label}</div>
+    <div class="field-help">${help}</div>
+    <div class="tags">${chips}
+      <input type="text" class="chip-input" placeholder="${esc(tr('chip.add_ph') + '   ' + fieldExamples(field))}" data-add data-group="${group}" data-field="${field}">
+    </div></div>`;
+}
+// ---- list-name modal (name a list on add, or rename via the pencil) ----
+let listModal = null;   // { mode:'add'|'edit', id, index }
+function openListModal(mode, id, name, index){
+  if(mode==='edit'){
+    const entry = PROFILES[SELECTED].x.lists[index];
+    id = entryKey(entry);
+    name = (entry && typeof entry==='object') ? (entry.name||'') : '';
+  }
+  listModal = { mode, id, index };
+  $('#lm-id').textContent = id;
+  $('#lm-name').value = name || '';
+  $('#list-modal').hidden = false;
+  setTimeout(()=>$('#lm-name').focus(), 0);
+}
+function closeListModal(){ $('#list-modal').hidden = true; listModal = null; }
+function saveListModal(){
+  if(!listModal) return;
+  const name = $('#lm-name').value.trim();
+  const { mode, id, index } = listModal;
+  if(mode==='add') addEntry('x','lists',{ id, name });
+  else PROFILES[SELECTED].x.lists[index] = { id, name };
+  closeListModal(); renderEditor();
+}
+function normalize(group, field, raw){
+  let v = raw.trim();
+  if(group==='x' && field==='accounts'){
+    const m = v.match(/(?:x\.com|twitter\.com)\/([^\/?#]+)/i);
+    if(m) v = m[1];
+    return v.replace(/^@/,'');
+  }
+  if(group==='x' && field==='lists'){
+    let name='';
+    const bar = v.indexOf('|');                 // "123… | Weekly reads" -> id + name
+    if(bar>=0){ name = v.slice(bar+1).trim(); v = v.slice(0,bar).trim(); }
+    const m = v.match(/lists\/(\d+)/);
+    if(m) v = m[1];
+    return { id: v, name };
+  }
+  if(group==='github' && field==='topics'){     // GitHub topics: lowercase, hyphenated
+    return v.toLowerCase().replace(/\s+/g,'-');
+  }
+  return v;
+}
+// Same shapes Python enforces (config._check_sources). Checked here too so a bad value
+// is refused as you type rather than at Save — a Cyrillic handle used to be accepted,
+// saved, listed in the picker and then actually RUN against a URL that cannot exist.
+const SOURCE_SHAPE = {
+  'x.accounts': { re:/^[A-Za-z0-9_]{1,15}$/, msg:'field.bad_account' },
+  'x.lists':    { re:/^\d+$/,                msg:'field.bad_list'    },
+  'github.topics': { re:/^[a-z0-9][a-z0-9-]{0,49}$/, msg:'field.bad_topic' },
+  'feeds.urls':    { re:/^https?:\/\/.+/i,           msg:'field.bad_feed'  },
+};
+function sourceError(group, field, value){
+  const rule = SOURCE_SHAPE[group+'.'+field];
+  if(!rule) return String(value||'').trim() ? '' : tr('field.bad_search');
+  return rule.re.test(String(value||'')) ? '' : tr(rule.msg);
+}
+function addEntry(group, field, val){
+  const arr = PROFILES[SELECTED][group][field];
+  const key = (group==='x' && field==='lists') ? (val && val.id) : val;
+  const err = sourceError(group, field, key);
+  if(err){ toast(err); return false; }
+  if(group==='x' && field==='lists'){
+    if(arr.some(e => entryKey(e) === val.id)) return false;
+    arr.push(val); return true;
+  }
+  if(arr.includes(val)) return false;
+  arr.push(val); return true;
+}
+function onEditorKeydown(e){
+  const inp = e.target.closest('input[data-add]');
+  if(!inp || e.key!=='Enter') return;
+  e.preventDefault();
+  const g = inp.dataset.group, f = inp.dataset.field;
+  const val = normalize(g, f, inp.value);
+  if(g==='x' && f==='lists'){                    // don't add yet — name it in the modal first
+    if(!val || !val.id) return;
+    const err = sourceError(g, f, val.id);
+    if(err) return toast(err);                   // reject before the naming dialog opens
+    inp.value='';
+    openListModal('add', val.id, val.name||'');
+    return;
+  }
+  if(!addEntry(g, f, val)) return;
+  renderEditor(); focusAdd(g, f);
+}
+function focusAdd(group, field){
+  const el = $(`input[data-add][data-group="${group}"][data-field="${field}"]`);
+  if(el) el.focus();
+}
+async function onEditorClick(e){
+  const rm = e.target.closest('[data-rm]');
+  if(rm){ PROFILES[SELECTED][rm.dataset.group][rm.dataset.field].splice(+rm.dataset.i,1); renderEditor(); return; }
+  const ed = e.target.closest('[data-edit-list]');
+  if(ed){ openListModal('edit', null, null, +ed.dataset.editList); return; }
+  if(e.target.closest('#save-profiles')){ await saveProfiles(); return; }
+}
+// pull any text typed into an "add" field but not yet Enter'd into the arrays
+function flushPending(){
+  document.querySelectorAll('#editor input[data-add]').forEach(inp=>{
+    // an EMPTY add box is not a pending entry. Pushing it through the validator made
+    // every Save toast "bad handle / bad topic / bad feed URL" beside the green
+    // "saved", which reads as a failed save of something the user never typed.
+    if(!inp.value.trim()) return;
+    const val = normalize(inp.dataset.group, inp.dataset.field, inp.value);
+    if(addEntry(inp.dataset.group, inp.dataset.field, val)) inp.value='';
+  });
+}
+async function saveProfiles(){
+  flushPending();
+  const msg = $('#save-msg'); msg.className='save-msg';
+  const res = await api().save_profiles({profiles: PROFILES});
+  if(res && res.errors){ msg.textContent = res.errors.join('; '); msg.classList.add('err'); }
+  else { msg.textContent=tr('profiles.saved'); msg.classList.add('ok'); markProfilesSaved();
+         renderSourcePicker(); renderProfileList(); renderEditor(); }
+}
+function onProfileListClick(e){
+  const add = e.target.closest('#add-profile');
+  if(add) return onProfileAdd();
+  if(e.target.closest('#edit-profiles')) return toggleProfilesEdit();
+  const ren = e.target.closest('[data-rename]');
+  if(ren) return onProfileRename(ren.dataset.rename);
+  const del = e.target.closest('[data-delete]');
+  if(del) return onProfileDelete(del.dataset.delete);
+  const it = e.target.closest('.plist-item'); if(!it) return;
+  SELECTED = it.dataset.name; renderProfileList(); renderEditor();
+}
+
+/* ---- settings ---- */
+// The app writes .env so nobody has to find a dotfile. Values arrive MASKED and the
+// inputs are password fields: a key on screen ends up in a screenshot eventually.
+// Values arrive MASKED, so an
+// untouched field comes back empty and Python reads that as "leave it alone".
+let SETTINGS = null;
+
+// The knobs that decide how wide the net is and how strictly the run judges. They were
+// `.env`-only, which sat oddly next to a screen built so nobody has to find a dotfile.
+// The SHAPES come from Python (`tuning.KNOBS`), never a copy here — the min/max the
+// input enforces has to be the same one the save refuses on.
+let TUNING = { values:{}, knobs:[] };
+function tuneField(k){
+  const v = TUNING.values[k.name];
+  const label = tr('tune.'+k.name), help = tr('tune.'+k.name+'_help');
+  const input = k.kind === 'text'
+    ? `<input type="text" data-tune="${esc(k.name)}" value="${esc(v == null ? '' : v)}"
+         spellcheck="false" autocomplete="off">`
+    : `<input type="number" data-tune="${esc(k.name)}" value="${esc(v == null ? '' : v)}"
+         min="${k.min}" max="${k.max}" step="${k.kind === 'int' ? 1 : 'any'}">`;
+  return `<div class="tune-row ${k.kind === 'text' ? 'wide' : ''}">
+    <div class="set-label">${esc(label)}</div>
+    <div class="set-help">${esc(help)}</div>
+    ${input}
+  </div>`;
+}
+
+async function renderSettings(){
+  SETTINGS = await api().get_settings();
+  TUNING = (await api().get_tuning()) || { values:{}, knobs:[] };
+  const st = await api().setup_state();
+  const hasCookies = !(st.missing||[]).includes('cookies');
+  const field = (key, label, help, value, ph) => `
+    <div class="set-field">
+      <div class="set-label">${esc(tr(label))}</div>
+      <div class="set-help">${esc(tr(help))}</div>
+      <div class="set-row">
+        <input type="password" id="set-${esc(key)}" placeholder="${esc(ph||'')}" value=""
+               autocomplete="off" spellcheck="false">
+        <button class="btn-ghost" data-verify="${esc(key)}">${esc(tr('settings.verify'))}</button>
+        ${value ? `<span class="set-current"><span class="cap">${esc(tr('settings.masked_label'))}</span>
+          <span class="set-state" data-state="${esc(key)}">${esc(value)}</span></span>`
+                : `<span class="set-state" data-state="${esc(key)}"></span>`}
+      </div>
+    </div>`;
+  $('#settings-body').innerHTML = `
+   <div class="set-grid">
+    <div class="set-box">
+      <h3>${esc(tr('settings.keys'))}</h3>
+      ${field('GITHUB_TOKEN','settings.github','settings.github_help',SETTINGS.GITHUB_TOKEN,'ghp_…')}
+      ${field('OPENAI_API_KEY','settings.openai','settings.openai_help',SETTINGS.OPENAI_API_KEY,'sk-…')}
+      <div class="set-field">
+        <div class="set-label">${esc(tr('settings.model'))}</div>
+        <div class="set-help">${esc(tr('settings.model_help'))}</div>
+        <select id="set-LLM_MODEL">${modelOptions(SETTINGS.LLM_MODEL||'')}</select>
+      </div>
+      <div class="set-actions">
+        <button class="btn-save" id="set-save">${esc(tr('btn.save'))}</button>
+        <span class="set-help">${esc(tr('settings.unchanged_hint'))}</span>
+      </div>
+    </div>
+    <div class="set-box">
+      <h3>${esc(tr('settings.x'))}
+        <span class="pill ${hasCookies?'ok':''}">${esc(hasCookies ? tr('settings.x_have') : tr('settings.x_none'))}</span>
+      </h3>
+      <div class="set-help">${esc(tr('settings.x_help'))}</div>
+      <div class="set-steps">${esc(tr('settings.cookies_steps'))}</div>
+      <textarea class="cookie-area" id="set-cookies" spellcheck="false"
+        placeholder="${esc(tr('settings.cookies_ph'))}"></textarea>
+      <div class="set-actions">
+        <button class="btn-ghost" id="set-cookies-import" disabled>${esc(tr('settings.cookies_import'))}</button>
+      </div>
+    </div>
+    <div class="set-box">
+      <h3>${esc(tr('settings.tuning'))}</h3>
+      <div class="set-help">${esc(tr('settings.tuning_help'))}</div>
+      <div class="tune-grid">${TUNING.knobs.map(tuneField).join('')}</div>
+      <div class="set-actions">
+        <button class="btn-save" id="tune-save">${esc(tr('btn.save'))}</button>
+        <button class="btn-ghost" id="tune-reset">${svg('undo')}${esc(tr('settings.tuning_reset'))}</button>
+      </div>
+    </div>
+    <div class="set-box danger-zone">
+      <h3>${esc(tr('settings.danger'))}</h3>
+      <div class="set-help">${esc(tr('settings.reset_help'))}</div>
+      <div class="set-actions">
+        <button class="btn-ghost danger" id="set-reset">${svg('trash')}${esc(tr('settings.reset'))}</button>
+        <span class="set-help" id="db-stats"></span>
+      </div>
+    </div>
+   </div>`;
+  showDbStats();
+  wireCookieBox();
+  markSettingsSaved();
+}
+
+// What is on screen versus what is on disk. The key inputs start EMPTY (the saved
+// value is only ever shown masked), so any text in one is by definition unsaved.
+let SETTINGS_SAVED = '';
+function settingsSnapshot(){
+  const parts = [];
+  document.querySelectorAll('#settings-body input, #settings-body select, #settings-body textarea')
+    .forEach(el => parts.push((el.id || el.dataset.tune || '') + '=' + el.value));
+  // \u0000 as an ESCAPE, never the byte: the cookie textarea can hold newlines, so the
+  // separator has to be something no field value can contain — and a literal NUL makes
+  // the whole file read as binary to grep, which has cost this project twice.
+  return parts.join('\u0000');
+}
+function markSettingsSaved(){ SETTINGS_SAVED = settingsSnapshot(); }
+function settingsDirty(){
+  // nothing rendered yet -> nothing to lose
+  return !!$('#settings-body').children.length && settingsSnapshot() !== SETTINGS_SAVED;
+}
+
+// A free-text model field was one typo away from a run that fails on every call.
+// A value already in .env that is not on the list is kept as an extra option rather
+// than silently rewritten.
+const LLM_MODELS = ['gpt-4.1-mini','gpt-4.1','gpt-4o-mini','gpt-4o','gpt-5-mini','gpt-5'];
+function modelOptions(current){
+  const list = LLM_MODELS.includes(current) || !current ? LLM_MODELS : [current, ...LLM_MODELS];
+  return list.map(m => `<option value="${esc(m)}"${m===current?' selected':''}>${esc(m)}</option>`).join('');
+}
+// Import stays disabled until there is something to import; pressing it on an empty
+// box just produced an error toast.
+function wireCookieBox(){
+  const area = $('#set-cookies'), btn = $('#set-cookies-import');
+  if(!area || !btn) return;
+  const sync = () => { btn.disabled = !area.value.trim(); };
+  area.addEventListener('input', sync); sync();
+}
+async function onSettingsClick(e){
+  const v = e.target.closest('[data-verify]');
+  if(v) return verifyKey(v.dataset.verify);
+  if(e.target.closest('#set-save')) return saveSettings();
+  if(e.target.closest('#set-cookies-import')) return importCookies();
+  if(e.target.closest('#set-reset')) return openWipeModal();
+  if(e.target.closest('#tune-save')) return saveTuning();
+  if(e.target.closest('#tune-reset')) return resetTuning();
+}
+
+async function saveTuning(){
+  const values = {};
+  document.querySelectorAll('[data-tune]').forEach(i => values[i.dataset.tune] = i.value.trim());
+  const res = await api().save_tuning(values);
+  if(res && res.errors) return toast(res.errors[0]);
+  toast(tr('settings.tuning_saved'));
+  renderSettings();
+}
+// Put every field back to the shipped default. It only fills the inputs — nothing is
+// written until Save, so a misclick costs one Cancel and not a run's worth of settings.
+function resetTuning(){
+  TUNING.knobs.forEach(k => {
+    const el = document.querySelector(`[data-tune="${k.name}"]`);
+    if(el) el.value = k.default;
+  });
+}
+
+// What the wipe would take, in the user's own numbers rather than an abstract warning.
+async function showDbStats(){
+  const el = $('#db-stats'); if(!el) return;
+  try{
+    const s = await api().db_stats();
+    el.textContent = tr('settings.reset_counts', {topics:s.topics, tracked:s.tracked, banned:s.banned});
+  }catch(_){ el.textContent = ''; }
+}
+// You pick the parts, then confirm once with the real numbers in front of you. A
+// window.confirm cannot carry checkboxes, and an all-or-nothing wipe made the common
+// case (clear shown topics, keep the watchlist) impossible.
+const WIPE_PARTS = [
+  { key:'topics',  label:'settings.wipe_topics',  help:'settings.wipe_topics_help',  count:s=>s.topics  },
+  { key:'tracked', label:'settings.wipe_tracked', help:'settings.wipe_tracked_help', count:s=>s.tracked },
+  { key:'banned',  label:'settings.wipe_banned',  help:'settings.wipe_banned_help',  count:s=>s.banned  },
+];
+let WIPE_ON = new Set(['topics']);   // the one you usually want; the rest are opt-in
+
+async function openWipeModal(){
+  const s = await api().db_stats();
+  $('#wipe-title').textContent = tr('settings.reset');
+  $('#wipe-sub').textContent = tr('settings.wipe_sub');
+  $('#wipe-parts').innerHTML = WIPE_PARTS.map(p => `
+    <label class="wipe-row ${WIPE_ON.has(p.key)?'on':''}" data-part="${p.key}">
+      <span class="cbox ${WIPE_ON.has(p.key)?'on':''}">${svg('check')}</span>
+      <span class="wipe-text">
+        <span class="wipe-name">${esc(tr(p.label))} <span class="wipe-n mono">${p.count(s)}</span></span>
+        <span class="wipe-help">${esc(tr(p.help))}</span>
+      </span>
+    </label>`).join('');
+  syncWipeButton();
+  $('#wipe-modal').hidden = false;
+}
+function closeWipeModal(){ $('#wipe-modal').hidden = true; }
+function syncWipeButton(){
+  const btn = $('#wipe-go');
+  btn.disabled = WIPE_ON.size === 0;
+  btn.innerHTML = svg('trash') + esc(tr('settings.wipe_go'));
+}
+function onWipeClick(e){
+  if(e.target.id === 'wipe-modal') return closeWipeModal();
+  if(e.target.closest('#wipe-cancel')) return closeWipeModal();
+  if(e.target.closest('#wipe-go')) return runWipe();
+  const row = e.target.closest('[data-part]');
+  if(!row) return;
+  e.preventDefault();
+  const k = row.dataset.part;
+  WIPE_ON.has(k) ? WIPE_ON.delete(k) : WIPE_ON.add(k);
+  row.classList.toggle('on', WIPE_ON.has(k));
+  row.querySelector('.cbox').classList.toggle('on', WIPE_ON.has(k));
+  syncWipeButton();
+}
+async function runWipe(){
+  const s = await api().db_stats();
+  const picked = WIPE_PARTS.filter(p => WIPE_ON.has(p.key))
+                           .map(p => `${tr(p.label)} (${p.count(s)})`).join(', ');
+  if(!confirm(tr('settings.wipe_confirm', {parts: picked}))) return;
+  const parts = {};
+  WIPE_PARTS.forEach(p => parts[p.key] = WIPE_ON.has(p.key));
+  const res = await api().reset_database(parts);
+  if(res && res.errors) return toast(res.errors[0]);
+  // Wiping the topics must clear the SCREEN too, not just the .md button. The feed
+  // is restored from the database now, so cards left behind would outlive the rows
+  // they came from and their keep checkbox would write to nothing.
+  if(parts.topics){
+    MD_READY = false;
+    $('#md-btn').disabled = true;
+    $('#results').innerHTML = '';
+    $('#clear-btn').disabled = true;
+  }
+  closeWipeModal();
+  toast(tr('settings.reset_done'));
+  refreshBannedCount();
+  showDbStats();
+}
+
+async function saveSettings(){
+  const vals = {};
+  ['GITHUB_TOKEN','OPENAI_API_KEY','LLM_MODEL'].forEach(k => {
+    const el = $('#set-'+k); if(el && el.value.trim()) vals[k] = el.value.trim();
+  });
+  const res = await api().save_settings(vals);
+  if(res && res.errors) return toast(res.errors[0]);
+  toast(tr('settings.saved'));
+  renderSettings();
+}
+
+async function verifyKey(key){
+  const el = document.querySelector(`[data-state="${key}"]`);
+  // save first: checking what is on screen would silently test a stale value
+  const input = $('#set-'+key);
+  if(input && input.value.trim()){
+    await api().save_settings({[key]: input.value.trim()});
+    // Verify WRITES the key, so the field is no longer unsaved. Without this the
+    // leave-warning fired on a key the user had just verified.
+    markSettingsSaved();
+  }
+  if(el){ el.className = 'set-state'; el.textContent = tr('settings.checking'); }
+  const res = await api().verify_key(key);
+  if(!el) return;
+  if(res && res.ok){ el.className = 'set-state ok'; el.textContent = tr('settings.ok', {detail:res.detail||''}); }
+  else { el.className = 'set-state bad'; el.textContent = (res && res.errors && res.errors[0]) || 'failed'; }
+}
+
+async function importCookies(){
+  const box = $('#set-cookies');
+  const res = await api().import_cookies(box ? box.value : '');
+  if(res && res.errors) return toast(res.errors[0]);
+  if(box) box.value = '';
+  toast(tr('settings.cookies_ok', {n:res.count}));
+  renderSettings();
+}
+
+/* ---- first-run wizard ---- */
+// Shown once, when the keys are missing. X is skippable on purpose: without it the
+// app runs on GitHub alone, which is a fine first experience and skips the fiddliest
+// step. The last step hands over the meta-prompt (the owner's choice: here, not in
+// the editor) with a "run this again" entry in Settings so it stays reachable.
+let WIZ = 0;
+const WIZ_STEPS = ['intro', 'github', 'openai', 'cookies', 'done'];
+// which keys were actually CHECKED, not merely typed — Next waits for the check
+let WIZ_OK = {};
+
+async function openWizard(){
+  WIZ = 0; WIZ_OK = {};
+  $('#wizard').hidden = false;
+  renderWizard();
+}
+function closeWizard(){ $('#wizard').hidden = true; }
+
+async function renderWizard(){
+  const step = WIZ_STEPS[WIZ];
+  const total = WIZ_STEPS.length;
+  $('#wiz-step').textContent = tr('wizard.step', {n:WIZ+1, total:total});
+  $('#wiz-back').textContent = tr('wizard.back');
+  $('#wiz-back').hidden = WIZ === 0;
+  // Skip is offered on every step that asks for something, not just the cookies one.
+  // Someone who just downloaded this wants to see what it IS before going off to
+  // create two API tokens, and the guide used to be a wall: Next stays disabled until
+  // a key verifies, so the only way past was the × in the corner.
+  $('#wiz-skip').textContent = tr(step === 'cookies' ? 'wizard.skip' : 'wizard.skip_key');
+  $('#wiz-skip').hidden = (step === 'intro' || step === 'done');
+  $('#wiz-next').textContent = (WIZ === total-1) ? tr('wizard.finish') : tr('wizard.next');
+  syncWizNext();
+
+  const body = $('#wiz-body');
+  if(step === 'intro'){
+    $('#wiz-title').textContent = tr('wizard.title');
+    body.innerHTML = `<div class="wiz-text">${esc(tr('wizard.intro'))}</div>`;
+  } else if(step === 'github' || step === 'openai'){
+    const key = step === 'github' ? 'GITHUB_TOKEN' : 'OPENAI_API_KEY';
+    const label = step === 'github' ? 'settings.github' : 'settings.openai';
+    const help = step === 'github' ? 'settings.github_help' : 'settings.openai_help';
+    $('#wiz-title').textContent = tr(label);
+    body.innerHTML = `<div class="wiz-text">${esc(tr(help))}</div>
+      <div class="set-row">
+        <input type="password" id="wiz-input" autocomplete="off" spellcheck="false"
+               placeholder="${key === 'GITHUB_TOKEN' ? 'ghp_…' : 'sk-…'}">
+        <button class="btn-ghost" data-wiz-verify="${key}">${esc(tr('settings.verify'))}</button>
+        <span class="set-state" data-state="${key}"></span>
+      </div>
+      <div class="wiz-need" id="wiz-need">${esc(tr('wizard.need_check'))}</div>`;
+  } else if(step === 'cookies'){
+    $('#wiz-title').textContent = tr('settings.x');
+    body.innerHTML = `<div class="wiz-text">${esc(tr('settings.x_help'))}</div>
+      <div class="set-help">${esc(tr('settings.cookies_steps'))}</div>
+      <textarea class="cookie-area" id="wiz-cookies" spellcheck="false"
+        placeholder="${esc(tr('settings.cookies_ph'))}"></textarea>`;
+  } else {
+    $('#wiz-title').textContent = tr('wizard.done_title');
+    // Skipping is allowed, so the last step has to say what is still missing —
+    // otherwise the first run dies on the first API call with no explanation.
+    let missing = [];
+    try{ const st = await api().setup_state(); missing = (st && st.missing) || []; }catch(_){}
+    const names = missing.filter(m => m !== 'cookies')
+      .map(m => tr(m === 'GITHUB_TOKEN' ? 'settings.github' : 'settings.openai'));
+    body.innerHTML = `<div class="wiz-text">${esc(tr('wizard.done_help'))}</div>` +
+      (names.length ? `<div class="wiz-warn">${svg('alert')}<span>${
+        esc(tr('wizard.still_missing', {keys: names.join(', ')}))}</span></div>` : '');
+  }
+}
+
+// A key that was typed but never checked used to sail through, and the first run then
+// died on the first API call. The step now waits for a green check.
+function syncWizNext(){
+  const step = WIZ_STEPS[WIZ];
+  const key = step === 'github' ? 'GITHUB_TOKEN' : step === 'openai' ? 'OPENAI_API_KEY' : null;
+  const btn = $('#wiz-next');
+  if(!btn) return;
+  btn.disabled = !!key && !WIZ_OK[key];
+  const hint = $('#wiz-need');
+  if(hint) hint.hidden = !btn.disabled;
+}
+async function wizardNext(){
+  const step = WIZ_STEPS[WIZ];
+  if(step === 'github' || step === 'openai'){
+    const el = $('#wiz-input');
+    const key = step === 'github' ? 'GITHUB_TOKEN' : 'OPENAI_API_KEY';
+    if(el && el.value.trim()){
+      const res = await api().save_settings({[key]: el.value.trim()});
+      if(res && res.errors) return toast(res.errors[0]);
+    }
+  }
+  if(step === 'cookies'){
+    const el = $('#wiz-cookies');
+    if(el && el.value.trim()){
+      const res = await api().import_cookies(el.value);
+      if(res && res.errors) return toast(res.errors[0]);   // stay put and say why
+    }
+  }
+  if(WIZ >= WIZ_STEPS.length - 1){ closeWizard(); return; }
+  WIZ += 1; renderWizard();
+}
+
+async function onWizardClick(e){
+  const v = e.target.closest('[data-wiz-verify]');
+  if(v){
+    const key = v.dataset.wizVerify;
+    const input = $('#wiz-input');
+    if(input && input.value.trim()) await api().save_settings({[key]: input.value.trim()});
+    await verifyKey(key);
+    const state = document.querySelector(`[data-state="${key}"]`);
+    WIZ_OK[key] = !!(state && state.classList.contains('ok'));
+    syncWizNext();
+    return;
+  }
+}
+
+/* ---- prompts ---- */
+// The rules that decide the feed. A profile's own file is editable; the shared ones
+// are shown but locked — they carry the output contract, and a broken one costs a
+// whole run without ever raising.
+let PROMPTS = [];
+let PROMPT_SELECTED = null;
+let PROMPT_TEXT = "";      // what is in the box, so a re-render does not lose an edit
+let PROMPT_FILE = null;    // the last get_prompt() reply: editable? has a backup?
+
+async function renderPrompts(){
+  PROMPTS = (await api().list_prompts()) || [];
+  if(!PROMPT_SELECTED || !PROMPTS.some(p => p.name === PROMPT_SELECTED)){
+    const first = PROMPTS.find(p => p.editable);
+    PROMPT_SELECTED = first ? first.name : (PROMPTS[0] || {}).name || null;
+    PROMPT_TEXT = null;
+  }
+  renderPromptList();
+  await renderPromptEditor();
+}
+
+function promptRow(p){
+  return `<button class="plist-item ${p.name===PROMPT_SELECTED?'active':''}"
+            data-prompt="${esc(p.name)}">${esc(p.name)}</button>`;
+}
+// `_meta` is not a file you browse to — it IS the text the guide hands you, so it lives
+// inside the guide and no longer takes a section of its own in the list. It was listed
+// separately for one day and the owner's reaction was that a whole heading for a file
+// you already reach while making a profile is pointless.
+const META_PROMPTS = ['_meta'];
+function renderPromptList(){
+  const own = PROMPTS.filter(p => p.editable && !META_PROMPTS.includes(p.name));
+  $('#prompt-list-own').innerHTML = own.map(promptRow).join('');
+  $('#prompt-list-shared').innerHTML = PROMPTS.filter(p=>!p.editable).map(promptRow).join('');
+}
+
+async function renderPromptEditor(){
+  const box = $('#prompt-editor');
+  if(!PROMPT_SELECTED){
+    box.innerHTML = '<div class="empty">'+esc(tr('prompts.pick_left'))+'</div>';
+    return;
+  }
+  const p = await api().get_prompt(PROMPT_SELECTED);
+  PROMPT_FILE = p;
+  if(PROMPT_TEXT === null || PROMPT_TEXT === undefined) PROMPT_TEXT = p.text || '';
+  const editable = !!p.editable;
+  const about = tr('prompts.about.'+p.name);
+  // The text is a PREVIEW here. It used to be a live textarea on the page, so the
+  // whole file was one stray keystroke from being replaced — editing happens in a
+  // modal you have to open on purpose, and saving keeps the previous version.
+  box.innerHTML = `
+    <div class="prompt-head">
+      <span class="prompt-name">${esc(p.name)}</span>
+      ${editable ? '' : `<span class="prompt-lock">${svg('lock')}${esc(tr('prompts.readonly_badge'))}</span>`}
+      <span class="spacer"></span>
+      ${editable ? `<button class="btn-ghost" id="prompt-edit">${svg('edit')}${esc(tr('prompts.edit'))}</button>
+        <button class="btn-ghost" id="prompt-test">${svg('play')}${esc(tr('prompts.test'))}</button>` : ''}
+    </div>
+    ${about && about !== 'prompts.about.'+p.name
+        ? `<div class="prompt-about">${esc(about)}</div>` : ''}
+    <div class="prompt-preview" id="prompt-preview">${esc(PROMPT_TEXT)}</div>
+    ${editable
+      ? `<div class="prompt-note">${esc(tr('prompts.test_hint'))}</div>`
+      : `<div class="prompt-note">${esc(tr('prompts.readonly_note'))}</div>`}
+    ${editable && !META_PROMPTS.includes(p.name) ? promptGuideHtml() : ''}
+    <div id="test-result"></div>`;
+}
+
+// "How do I write one of these?" had no answer anywhere in the app. The recipe is the
+// one the owner actually uses: take the prompt that already works, hand it to an LLM,
+// let it interview you, paste the result back. Collapsed by default — it is a thing you
+// read once, not furniture.
+let GUIDE_OPEN = localStorage.getItem('promptGuideOpen') === '1';
+function promptGuideHtml(){
+  const steps = [1,2,3,4,5].map(n => tr('prompts.guide_s'+n))
+    .filter(s => s && !s.startsWith('prompts.guide_s'));
+  return `<div class="guide ${GUIDE_OPEN?'open':''}" id="prompt-guide">
+    <button class="guide-head" id="guide-toggle" type="button">
+      ${svg('help')}<span>${esc(tr('prompts.guide_title'))}</span>
+      <span class="spacer"></span>${svg('chevron','guide-chev')}</button>
+    <div class="guide-body">
+      <ol class="guide-steps">${steps.map(s=>`<li>${esc(s)}</li>`).join('')}</ol>
+      <div class="guide-acts">
+        <button class="btn-ghost" id="guide-copy">${svg('copy')}${esc(tr('prompts.guide_copy'))}</button>
+      </div>
+    </div></div>`;
+}
+function toggleGuide(){
+  GUIDE_OPEN = !GUIDE_OPEN;
+  localStorage.setItem('promptGuideOpen', GUIDE_OPEN ? '1' : '0');
+  const g = $('#prompt-guide'); if(g) g.classList.toggle('open', GUIDE_OPEN);
+}
+// What the owner hands to the LLM: the rules that already work, plus the instruction to
+// interview him and give back a file in the same shape.
+// The clipboard gets `_meta.txt` and NOTHING else. The first version pasted a sentence
+// I had written plus the profile's CURRENT rules, so pressing the button handed the LLM
+// a half-written skeleton to react to — while `_meta.txt` already held the real thing:
+// a finished interview prompt that asks about the subject and writes the rules.
+async function copyGuidePayload(){
+  let text = '';
+  try{ text = (await api().get_prompt('_meta')).text || ''; }catch(_){}
+  if(!text) return toast(tr('toast.copy_failed'));
+  try{ await navigator.clipboard.writeText(text); toast(tr('toast.copied')); }
+  catch(e){ toast(tr('toast.copy_failed')); }
+}
+
+/* ---- prompt editor, in a modal ----------------------------------------------
+   The editor used to BE the page: a live textarea holding 33 KB of scoring rules,
+   always focusable, with a Save right under it and no undo of any kind. Now it opens
+   on purpose, warns before throwing away an unsaved edit, and can put back the
+   version a save replaced (Api.restore_prompt). */
+let EDITOR_DRAFT = '';
+function editorDirty(){ return EDITOR_DRAFT !== (PROMPT_TEXT || ''); }
+
+function openPromptEditor(){
+  if(!PROMPT_FILE || !PROMPT_FILE.editable) return;
+  EDITOR_DRAFT = PROMPT_TEXT || '';
+  $('#pe-name').textContent = PROMPT_SELECTED;
+  $('#pe-area').value = EDITOR_DRAFT;
+  $('#pe-restore').hidden = !PROMPT_FILE.has_backup;
+  $('#prompt-modal').hidden = false;
+  $('#pe-area').focus();
+}
+function closePromptEditor(force){
+  if(!force && editorDirty() && !confirm(tr('prompts.confirm_discard'))) return;
+  $('#prompt-modal').hidden = true;
+  EDITOR_DRAFT = '';
+}
+async function savePromptFromEditor(){
+  const text = $('#pe-area').value;
+  const res = await api().save_prompt(PROMPT_SELECTED, text);
+  if(res && res.errors) return toast(res.errors[0]);
+  PROMPT_TEXT = text;
+  toast(tr('prompts.saved'));
+  closePromptEditor(true);
+  await renderPromptEditor();
+}
+async function restorePromptVersion(){
+  if(!confirm(tr('prompts.confirm_restore'))) return;
+  const res = await api().restore_prompt(PROMPT_SELECTED);
+  if(res && res.errors) return toast(res.errors[0]);
+  PROMPT_TEXT = res.text || '';
+  EDITOR_DRAFT = PROMPT_TEXT;
+  $('#pe-area').value = PROMPT_TEXT;
+  toast(tr('prompts.restored'));
+  await renderPromptEditor();
+}
+
+async function testPrompt(){
+  const btn = $('#prompt-test');
+  if(btn){ btn.disabled = true; btn.textContent = tr('prompts.testing'); }
+  // the draft when the editor is open, the saved file otherwise
+  const candidate = $('#prompt-modal').hidden ? PROMPT_TEXT : $('#pe-area').value;
+  const res = await api().test_prompt(PROMPT_SELECTED, candidate);
+  if(btn){ btn.disabled = false; btn.innerHTML = svg('play') + esc(tr('prompts.test')); }
+  if(!res || res.errors) return toast((res && res.errors && res.errors[0]) || 'failed');
+  renderTestResult(res);
+}
+
+function renderTestResult(r){
+  const source = r.is_sample
+    ? tr('prompts.test_source_sample')
+    : tr('prompts.test_source_run', {run:r.run, tested:r.tested, total:r.total_available});
+  const skipped = r.skipped ? ' · ' + tr('prompts.test_skipped', {n:r.skipped}) : '';
+  const rows = (r.rows||[]).map(row => {
+    const after = row.after === null || row.after === undefined
+      ? `<span class="n none">·</span>`
+      : `<span class="n${row.after >= r.threshold ? ' up' : ''}">${row.after}</span>`;
+    return `<div class="test-row">
+      <span class="t" title="${esc(row.text||'')}">${esc(row.title)}</span>
+      <span class="n">${row.before === null || row.before === undefined ? '·' : row.before}</span>
+      ${after}</div>`;
+  }).join('');
+  $('#test-result').innerHTML = `<div class="test-box">
+    <div class="test-summary">${esc(tr('prompts.test_summary',
+      {passed:r.passed, tested:r.tested, threshold:r.threshold, before:r.before_passed}))}</div>
+    <div class="test-meta">${esc(source)}${esc(skipped)}</div>
+    <div class="test-meta" style="margin-top:6px">${esc(tr('prompts.test_caveat'))}</div>
+    <div class="test-rows">
+      <div class="test-head"><span>${esc(tr('prompts.col_signal'))}</span>
+        <span style="text-align:right">${esc(tr('prompts.col_before'))}</span>
+        <span style="text-align:right">${esc(tr('prompts.col_after'))}</span></div>
+      ${rows}</div></div>`;
+}
+
+function onPromptListClick(e){
+  const it = e.target.closest('[data-prompt]'); if(!it) return;
+  PROMPT_SELECTED = it.dataset.prompt;
+  PROMPT_TEXT = null;                       // switching prompts loads the file afresh
+  renderPromptList(); renderPromptEditor();
+}
+function onPromptEditorClick(e){
+  if(e.target.closest('#prompt-edit')) return openPromptEditor();
+  if(e.target.closest('#prompt-test')) return testPrompt();
+  if(e.target.closest('#guide-toggle')) return toggleGuide();
+  if(e.target.closest('#guide-copy')) return copyGuidePayload();
+}
+
+
+/* ---- tracked ---- */
+let TRACKED_ROWS = [];
+let TRACKED_SORT = { key: null, dir: -1 };   // dir: -1 = desc (default), 1 = asc
+const TRACKED_COLS = [
+  { key:'repo', i18n:'tracked.col_repo' },
+  { key:'stars', i18n:'tracked.col_stars', num:true },
+  { key:'velocity', i18n:'tracked.col_velocity', num:true },
+  { key:'added', i18n:'tracked.col_added', num:true },
+  { key:'last_measured', i18n:'tracked.col_measured', num:true },
+];
+async function renderTracked(){
+  TRACKED_ROWS = await api().get_tracked();
+  renderTrackedTable();
+}
+function sortedTrackedRows(){
+  const { key, dir } = TRACKED_SORT;
+  if(!key) return TRACKED_ROWS;
+  return [...TRACKED_ROWS].sort((a, b) => {
+    let av = a[key], bv = b[key];
+    if(key === 'repo'){ av = av.toLowerCase(); bv = bv.toLowerCase(); }
+    if(av == null && bv == null) return 0;
+    if(av == null) return 1;    // nulls sort last regardless of direction
+    if(bv == null) return -1;
+    if(av < bv) return -dir;
+    if(av > bv) return dir;
+    return 0;
+  });
+}
+function renderTrackedTable(){
+  const box = $('#tracked-body');
+  if(!TRACKED_ROWS.length){
+    box.innerHTML = emptyState('star', 'tracked.empty_title', 'tracked.empty');
+    return;
+  }
+  const body = sortedTrackedRows().map(r=>`
+    <tr data-repo="${esc(r.repo)}">
+      <td>
+        <span class="repo" data-open data-url="${esc(r.url)}" title="${esc(tr('tracked.open_title'))}">${svg('github')}${esc(r.repo)}</span>
+        ${r.description?`<div class="repo-desc">${esc(r.description)}</div>`:''}
+      </td>
+      <td class="num mono">${r.stars==null?'·':fmtNum(r.stars)}</td>
+      <td class="num mono">${velHtml(r.velocity)}</td>
+      <td class="num mono">${fmtDate(r.added)}</td>
+      <td class="num mono">${fmtDate(r.last_measured)}</td>
+      <td class="num row-acts">
+        <button class="unwatch" data-unwatch>${svg('x')}${esc(tr('tracked.unwatch'))}</button>
+        <button class="unwatch ban" data-ban title="${esc(tr('card.ban_title'))}">${svg('ban')}${esc(tr('card.ban'))}</button>
+      </td>
+    </tr>`).join('');
+  const head = TRACKED_COLS.map(c=>{
+    const active = TRACKED_SORT.key === c.key;
+    const arrow = active ? svg('chevron', 'sort-arrow'+(TRACKED_SORT.dir===1?' asc':'')) : '';
+    return `<th class="sortable${c.num?' num':''}" data-sort="${c.key}">${esc(tr(c.i18n))}${arrow}</th>`;
+  }).join('');
+  box.innerHTML = `<table>
+    <thead><tr>${head}<th></th></tr></thead>
+    <tbody>${body}</tbody></table>
+    <div class="tracked-note">${tr('tracked.note')}</div>`;
+}
+function velHtml(v){
+  if(v==null) return '<span class="vel-measuring">'+esc(tr('tracked.measuring'))+'</span>';
+  const n = Math.round(v);
+  if(v>0.5) return `<span class="vel-up">${svg('trending')}+${n} ${esc(tr('unit.stars_per_day'))}</span>`;
+  return `<span class="vel-flat">${(n>=0?'+':'')+n} ${esc(tr('unit.stars_per_day'))}</span>`;
+}
+async function onTrackedClick(e){
+  const th = e.target.closest('[data-sort]');
+  if(th){
+    const key = th.dataset.sort;
+    if(TRACKED_SORT.key === key) TRACKED_SORT.dir *= -1;
+    else TRACKED_SORT = { key, dir: -1 };
+    renderTrackedTable();
+    return;
+  }
+  const open = e.target.closest('[data-open]');
+  if(open){ api().open_url(open.dataset.url); return; }
+  const banBtn = e.target.closest('[data-ban]');
+  if(banBtn){
+    const repo = banBtn.closest('tr').dataset.repo;
+    if(!confirm(tr('confirm.ban_repo_tracked'))) return;
+    await api().ban_repo(repo); renderTracked(); refreshBannedCount();
+    toast(tr('toast.banned'));
+    return;
+  }
+  const b = e.target.closest('[data-unwatch]'); if(!b) return;
+  const repo = b.closest('tr').dataset.repo;
+  await api().unwatch_repo(repo); renderTracked();
+}
+
+/* ---- banned ---- */
+/* the nav label carries the count, so you can see how many are banned without
+   opening the tab. Kept in sync from every place that bans/unbans. */
+function setBannedCount(n){
+  const el = $('#banned-count');
+  if(!el) return;
+  el.textContent = n || '';
+  el.hidden = !n;
+}
+async function refreshBannedCount(){
+  try { const rows = await api().list_banned(); setBannedCount(rows ? rows.length : 0); }
+  catch(e){ /* api not ready yet — the count just stays as it was */ }
+}
+async function renderBanned(){
+  const rows = await api().list_banned();
+  setBannedCount(rows ? rows.length : 0);
+  const box = $('#banned-body');
+  if(!rows || !rows.length){
+    box.innerHTML = emptyState('ban', 'banned.empty_title', 'banned.empty');
+    return;
+  }
+  box.innerHTML = rows.map(r=>`
+    <div class="banned-row" data-repo="${esc(r.repo)}">
+      <a class="repo" href="${esc(safeUrl(r.url))}" target="_blank" rel="noopener">${svg('github')}${esc(r.repo)}</a>
+      <button class="unwatch" data-unban>${svg('check')}${esc(tr('banned.unban'))}</button>
+    </div>`).join('');
+}
+async function onBannedClick(e){
+  const b = e.target.closest('[data-unban]'); if(!b) return;
+  const repo = b.closest('.banned-row').dataset.repo;
+  await api().unban_repo(repo); renderBanned();
+  toast(tr('toast.unbanned'));
+}
+
+/* ---- helpers ---- */
+function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function pluralForm(n){
+  if(LANG.startsWith('uk') || LANG.startsWith('ru')){
+    if(n%100>=11 && n%100<=14) return 'many';
+    const l = n%10; return l===1 ? 'one' : (l>=2 && l<=4 ? 'few' : 'many');
+  }
+  return n===1 ? 'one' : 'many';
+}
+function plural(n){ const f = STRINGS['plural.topics'] || {};
+  return f[pluralForm(n)] || f.many || f.one || ''; }
+// Stars are grouped by the SAME locale the dates use. The three call sites had it
+// hardcoded — two as 'uk', one as 'en-US' — so the tracked table and the feed card
+// showed the same star count differently, and an English build got uk grouping.
+function fmtNum(n){
+  // the SAME separator the .md uses (`export._stars`), read from the same catalogue
+  // key — toLocaleString was a second mechanism for one number, and two mechanisms
+  // for one number is how the tracked table once wrote 98,196 beside the card's 98 196
+  return String(Math.round(Number(n))).replace(/\B(?=(\d{3})+(?!\d))/g, tr('locale.thousands'));
+}
+function fmtDate(iso){
+  if(!iso) return '·';
+  return new Date(iso).toLocaleDateString(tr('locale.date'), {day:'2-digit', month:'2-digit', year:'numeric'});
+}
+
+/* ---- init ---- */
+async function init(){
+  try {
+    const pack = await api().get_strings();
+    STRINGS = (pack && pack.strings) || {};
+    LANG = (pack && pack.lang) || 'en';
+  } catch(_) { /* keys render as keys rather than an empty window */ }
+  applyStaticStrings();
+  $('#brand-icon').innerHTML = BRAND_MARK;
+  $('#nav-feed').innerHTML = svg('lightbulb')+'<span>'+esc(tr('nav.feed'))+'</span>';
+  $('#nav-profiles').innerHTML = svg('settings')+'<span>'+esc(tr('nav.profiles'))+'</span>';
+  $('#nav-prompts').innerHTML = svg('file')+'<span>'+esc(tr('nav.prompts'))+'</span>';
+  $('#nav-tracked').innerHTML = svg('star')+'<span>'+esc(tr('nav.tracked'))+'</span>';
+  $('#nav-settings').innerHTML = svg('settings')+'<span>'+esc(tr('nav.settings'))+'</span>';
+  $('#nav-banned').innerHTML = svg('ban')+'<span>'+esc(tr('nav.banned'))+'</span><span class="nav-count" id="banned-count" hidden></span>';
+  $('#run-btn').innerHTML = svg('play','fill')+'<span>'+esc(tr('btn.run'))+'</span>';
+  $('#stop-btn').innerHTML = svg('x')+'<span>'+esc(tr('btn.stop'))+'</span>';
+  $('#md-btn').innerHTML = svg('download')+'<span>.md</span>';
+  $('#md-btn').disabled = !MD_READY;      // dead until a run produces topics
+  $('#clear-btn').innerHTML = svg('trash')+'<span>'+esc(tr('btn.clear_feed'))+'</span>';
+  $('#clear-btn').disabled = true;        // enabled once there is something to clear
+
+  document.querySelectorAll('.nav-item').forEach(n=> n.addEventListener('click', ()=> showView(n.dataset.view)));
+  $('#run-btn').addEventListener('click', runParser);
+  $('#stop-btn').addEventListener('click', stopRun);
+  $('#md-btn').addEventListener('click', saveMd);
+  $('#clear-btn').addEventListener('click', clearFeed);
+  $('#results').addEventListener('click', onResultsClick);
+  $('#profile-checks').addEventListener('click', onPickerClick);
+  $('#plist').addEventListener('click', onProfileListClick);
+  $('#prompt-list-own').addEventListener('click', onPromptListClick);
+  $('#prompt-list-shared').addEventListener('click', onPromptListClick);
+  $('#prompt-editor').addEventListener('click', onPromptEditorClick);
+  $('#pe-save').textContent = tr('btn.save');
+  $('#pe-cancel').textContent = tr('btn.cancel');
+  $('#pe-close').innerHTML = svg('x');
+  $('#pe-restore').innerHTML = svg('undo') + esc(tr('prompts.restore'));
+  $('#pe-save').addEventListener('click', savePromptFromEditor);
+  $('#pe-cancel').addEventListener('click', ()=>closePromptEditor(false));
+  $('#pe-close').addEventListener('click', ()=>closePromptEditor(false));
+  $('#pe-restore').addEventListener('click', restorePromptVersion);
+  $('#pe-area').addEventListener('input', ()=>{ EDITOR_DRAFT = $('#pe-area').value; });
+  $('#prompt-modal').addEventListener('click', e=>{ if(e.target.id==='prompt-modal') closePromptEditor(false); });
+  $('#wipe-cancel').textContent = tr('btn.cancel');
+  $('#wipe-modal').addEventListener('click', onWipeClick);
+  $('#settings-body').addEventListener('click', onSettingsClick);
+  $('#wiz-body').addEventListener('click', onWizardClick);
+  $('#wiz-close').innerHTML = svg('x');
+  $('#wiz-close').title = tr('wizard.close');
+  $('#wiz-close').addEventListener('click', closeWizard);
+  $('#wiz-next').addEventListener('click', wizardNext);
+  $('#wiz-skip').addEventListener('click', ()=>{ WIZ += 1; renderWizard(); });
+  $('#wiz-back').addEventListener('click', ()=>{ WIZ = Math.max(0, WIZ-1); renderWizard(); });
+  const ed = $('#editor');
+  ed.addEventListener('keydown', onEditorKeydown);
+  ed.addEventListener('click', onEditorClick);
+  $('#tracked-body').addEventListener('click', onTrackedClick);
+  $('#banned-body').addEventListener('click', onBannedClick);
+
+  $('#lm-cancel').addEventListener('click', closeListModal);
+  $('#lm-save').addEventListener('click', saveListModal);
+  $('#list-modal').addEventListener('click', e=>{ if(e.target.id==='list-modal') closeListModal(); });
+  $('#lm-name').addEventListener('keydown', e=>{
+    if(e.key==='Enter'){ e.preventDefault(); saveListModal(); }
+  });
+  // Escape closes whatever is open, from anywhere. It used to work only while the
+  // focus sat in the list modal's name field, so a modal opened and left alone was
+  // dismissable by mouse only.
+  document.addEventListener('keydown', e=>{
+    if(e.key !== 'Escape') return;
+    if(!$('#prompt-modal').hidden) return closePromptEditor(false);
+    if(!$('#wipe-modal').hidden) return closeWipeModal();
+    if(!$('#list-modal').hidden) return closeListModal();
+    if(!$('#wizard').hidden) return closeWizard();
+  });
+
+  showView('feed');
+  refreshBannedCount();   // so the nav count is right before the tab is ever opened
+  restoreLastRun();       // the feed used to die with the window
+  // A fresh install has no keys and can do nothing, so the guide opens itself —
+  // once, and over the feed, so it is obvious what it is setting up.
+  try {
+    const st = await api().setup_state();
+    if(st && st.needs_onboarding) openWizard();
+  } catch(_) {}
+}
+window.addEventListener('pywebviewready', init);
+</script>
+</body>
+</html>
